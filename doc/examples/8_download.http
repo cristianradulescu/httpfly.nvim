@@ -1,0 +1,42 @@
+# Saving a response body to disk, via a post-request script and
+# require("fs") (same mechanism as 6_shell_auth.http's pre-request script).
+#
+# httpyac's JetBrains-style "@save" directive exists, but it's meant for
+# an IDE's interactive "save as" dialog -- in this non-interactive CLI
+# usage (what httpfly.nvim always uses) it silently does nothing, no file
+# gets written. Scripting it yourself is the reliable way.
+#
+# response.body's actual type depends on the response's Content-Type, and
+# that matters for how you need to write it out:
+#   - JSON        -> already-parsed object      -> JSON.stringify(...) first
+#   - HTML/XML     -> a parsed DOM Document      -> not covered here
+#   - anything else (plain text, csv, ...)       -> a plain string, write
+#                                                    it directly
+# Genuinely binary content (images, PDFs, zips, ...) can't be saved
+# reliably this way at all: httpyac decodes the response body to a JS
+# string somewhere in its own pipeline before scripts ever see it, and
+# that's lossy for arbitrary bytes -- confirmed by downloading a PNG this
+# way and finding the saved file's first byte, and its overall size, no
+# longer matched the original (a valid PNG starts with byte 0x89; the
+# written file didn't, and was hundreds of bytes shorter than the
+# original Content-Length).
+#
+# Run `make httpbin-up` from the repo root first (requires Docker).
+
+###
+# @name DownloadJson
+GET http://localhost:8080/get?report=example HTTP/1.1
+
+> {%
+  const fs = require("fs");
+  fs.writeFileSync("/tmp/httpfly-download-example.json", JSON.stringify(response.body, null, 2), "utf8");
+%}
+
+###
+# @name DownloadText
+GET http://localhost:8080/robots.txt HTTP/1.1
+
+> {%
+  require("fs").writeFileSync("/tmp/httpfly-download-example.txt", response.body, "utf8");
+%}
+

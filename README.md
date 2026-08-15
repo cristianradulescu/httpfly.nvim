@@ -37,8 +37,15 @@ to every request in the file), `4_debugging.http` (using
 `console.log` is silently dropped — see "Scripting notes" below), and
 `5_environments.http` (uses `{{base_url}}`/`{{client_name}}` from the
 `http-client.env.json` in that same directory — pick an environment with
-`:HttpEnv` first). They hit a local httpbin instance — run
-`make httpbin-up` first (requires Docker), `make httpbin-down` when done.
+`:HttpEnv` first), `6_shell_auth.http` (a pre-request script shelling out
+to `generate-token.sh` and using its stdout as the request's token — for
+auth flows too complex to reimplement inline), `7_forms.http`
+(`application/x-www-form-urlencoded`, `multipart/form-data`, and a
+multipart file upload via `< ./path`), and `8_download.http` (a
+post-request script saving a JSON/text response body to `/tmp` —
+including a note on why saving genuinely binary content this way doesn't
+work reliably). They hit a local httpbin instance — run `make httpbin-up`
+first (requires Docker), `make httpbin-down` when done.
 
 ## Requirements
 

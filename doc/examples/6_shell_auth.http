@@ -1,0 +1,26 @@
+# Delegating auth to an external shell script from a pre-request script --
+# useful when the login flow is too complex or awkward to reimplement
+# inline (a company-internal CLI that talks to a vault/hardware token, a
+# multi-request OAuth device-code exchange, decrypting a credential file,
+# etc.). generate-token.sh next to this file stands in for that: shell out
+# to it, capture its stdout, and use it as the request's token.
+#
+# Run `make httpbin-up` from the repo root first (requires Docker).
+
+###
+# @name Get
+# @lang javascript
+< {%
+  // __dirname is THIS .http FILE's own directory -- not necessarily
+  // httpyac's process cwd (which httpfly.nvim points at wherever your
+  // http-client.env.json lives, so it can find that file even when the
+  // request is nested in a subdirectory -- see "Environments" in the
+  // README). Building the script path from __dirname means this keeps
+  // working regardless of where httpyac actually gets invoked from.
+  const { execSync } = require("child_process");
+  const script = require("path").join(__dirname, "generate-token.sh");
+  const token = execSync(script).toString().trim();
+  request.variables.set("auth_token", token);
+%}
+GET http://localhost:8080/bearer HTTP/1.1
+Authorization: Bearer {{auth_token}}
