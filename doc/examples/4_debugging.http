@@ -26,4 +26,5 @@ GET http://localhost:8080/get?foo=bar HTTP/1.1
   // outcome), throw inside the callback -- client.assert(condition, message)
   // does that for you when condition is false
   client.test("status is 200", () => client.assert(response.status === 200, "expected 200, got " + response.status));
+  client.test("status is 500", () => client.assert(response.status === 500, "expected 500, got " + response.status));
 %}

@@ -8,6 +8,7 @@ local session = require("httpfly.session")
 local M = {}
 
 local result_buf_name = "httpfly://result"
+local hl_ns = vim.api.nvim_create_namespace("httpfly_result")
 
 local function open_result_buf()
   local buf = vim.fn.bufnr(result_buf_name)
@@ -82,14 +83,15 @@ local function run(cmd, cwd)
         return
       end
 
-      local lines, truncations
+      local lines, truncations, highlights
       if res.stdout then
-        lines, truncations = format.render(res.stdout, cmd_str)
+        lines, truncations, highlights = format.render(res.stdout, cmd_str)
       end
-      local filetype = "markdown"
+      local filetype = config.options.output_style == "unicode" and "text" or "markdown"
+      local history_ext = config.options.output_style == "unicode" and "txt" or "md"
 
       if lines then
-        history.save(lines)
+        history.save(lines, history_ext)
       end
 
       if not lines then
@@ -114,6 +116,11 @@ local function run(cmd, cwd)
       vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
       vim.bo[buf].modifiable = false
       vim.bo[buf].filetype = filetype
+
+      vim.api.nvim_buf_clear_namespace(buf, hl_ns, 0, -1)
+      for _, h in ipairs(highlights or {}) do
+        vim.api.nvim_buf_add_highlight(buf, hl_ns, h[4], h[1] - 1, h[2], h[3])
+      end
     end)
   end)
 end

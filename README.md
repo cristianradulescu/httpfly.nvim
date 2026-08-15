@@ -68,6 +68,7 @@ require("httpfly").setup({
   keymaps = true,                -- set the default <leader>h* keymaps below
   max_header_value_len = 100,    -- header table cell truncation length
   preview_keymap = "K",          -- keymap to preview a truncated value
+  output_style = "markdown",     -- "markdown" or "unicode"
 })
 ```
 
@@ -84,9 +85,19 @@ Open a `.http` file and:
 | `:HttpSendAll`  | `<leader>ha`  | Send every request in the file                        |
 | `:HttpSessionClear` | `<leader>hc` | Clear the session file (see below)                |
 
-The response opens in a vertical split as markdown. In that split, put the
+The response opens in a vertical split as markdown (`filetype = "markdown"`).
+Set `output_style = "unicode"` for the same layout (headers as a table,
+request/response sections, a body block) rendered with Unicode box-drawing
+characters (`┌─┬─┐`, `━━━`) instead of markdown syntax — no `**bold**`,
+`` ``` `` fences, or `|---|` pipes, `filetype = "text"`. It's colored too
+(status/method/section titles/JSON body syntax — keys, strings, numbers,
+booleans, null/etc.), via highlights the plugin applies directly to the
+buffer — no markdown-rendering plugin or treesitter parser needed. Useful
+if you don't want a markdown-rendering plugin touching this
+buffer, or just prefer that look. History files (see below) get `.txt`
+instead of `.md` to match. In that split, put the
 cursor on a truncated header value and press `K` to see the full value in a
-floating window.
+floating window (works the same in both styles).
 
 The currently selected environment for the file is shown in the winbar
 (`env: dev`, or `env: (none, :HttpEnv)` before you've picked one).

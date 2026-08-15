@@ -6,6 +6,7 @@ M.defaults = {
   keymaps = true,
   max_header_value_len = 100,
   preview_keymap = "K",
+  output_style = "markdown", -- "markdown" or "unicode"
 }
 
 M.options = vim.deepcopy(M.defaults)

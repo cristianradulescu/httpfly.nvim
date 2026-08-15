@@ -116,28 +116,107 @@ Request flow, end to end:
      read-only) lets `env.vars()` show these values merged into
      `:HttpEnvVars` output, distinct from the JS plugin above, which
      handles the actual write side.
-4. `lua/httpfly/format.lua` turns that JSON payload into markdown: one `##`
-   section per request, with method/URL/status line, request/response header
-   tables, and body code blocks. Two things it does deliberately, not
-   incidentally:
+4. `lua/httpfly/format.lua` is a thin dispatcher: it decodes the JSON
+   payload (`format/shared.lua`'s `extract_json`, defensive against any
+   stray non-JSON text before the `{` — relevant if `cmd` is ever invoked
+   through something like `npx` that prints notices to stdout), then hands
+   the decoded structure to a renderer module picked by
+   `config.options.output_style` (`"markdown"` → `format/markdown.lua`,
+   `"unicode"` → `format/unicode.lua`; unrecognized values fall back to
+   markdown). Both renderers take the same `(decoded, cmd_str)` and return
+   the same `(lines, truncations)` shape, so `runner.lua` doesn't need to
+   know which one ran — only `config.options.output_style` decides the
+   result buffer's `filetype` (`"markdown"`/`"text"`) and the history
+   file's extension (`.md`/`.txt`), both set directly in `runner.lua`
+   rather than threaded back through the renderer. `format/shared.lua`
+   holds what's genuinely style-independent: `truncate()` (see below) and
+   `body_lang()` (`Content-Type` → `json`/`xml`/`html`/`text`, used to
+   decide whether to pretty-print via `json.lua` and, in the markdown
+   renderer only, the code fence language tag — the unicode renderer
+   doesn't need a language tag but still needs to know whether to
+   pretty-print). Each renderer still owns its own header/body layout:
+   markdown uses `|---|` pipe tables and ` ``` ` fences; unicode renders an
+   actual box-drawing table (`┌─┬─┐`/`├─┼─┤`/`└─┴─┘`, column widths computed
+   from `vim.fn.strdisplaywidth()` so multi-byte UTF-8 header/value text
+   still aligns correctly) and delimits the body with a plain `─` rule
+   sized to the widest body line instead of a fenced code block — same
+   layout as markdown (tables, request/response sections, a body block),
+   deliberately no markdown syntax. That's the actual point of having two
+   renderers, so the layout logic is deliberately not abstracted further
+   into a shared "table builder".
+   - **Coloring without a filetype hook**: the markdown renderer relies on
+     `filetype = "markdown"` plus whatever the user has for markdown
+     buffers (treesitter, `render-markdown.nvim`) for color. The unicode
+     renderer's `filetype` is plain `"text"` (deliberately, after an
+     earlier attempt at a dedicated `httpfly-result` filetype for
+     `render-markdown.nvim` hooking ran into lazy-loading bootstrap issues
+     that weren't worth chasing further), so it returns a third value from
+     `M.render`: `highlights`, a list of `{line, col_start, col_end,
+     hl_group}` (1-based line, byte columns — matches how truncations are
+     already tracked). `runner.lua` applies these via
+     `vim.api.nvim_buf_add_highlight` in its own namespace
+     (`httpfly_result`), cleared and reapplied on every render since the
+     buffer is reused across sends. Uses only standard groups
+     (`DiagnosticOk/Warn/Error` for status/outcome, `Title`/`Statement` for
+     headings, `Comment` for box-drawing chrome, `Identifier`/`Keyword` for
+     header names/HTTP method) so it adapts to whatever colorscheme is
+     active rather than hardcoding colors. The markdown renderer doesn't
+     return a third value; `runner.lua` treats it as optional
+     (`ipairs(highlights or {})`).
+   - **JSON body syntax highlighting**: `json.lua`'s `pretty(str, tokens)`
+     takes an optional second argument — when given a table, it's filled
+     with one entry per meaningful token (`key`/`string`/`number`/
+     `boolean`/`null`) as the same bracket-scanning pass that produces the
+     indented text also classifies each token it emits: a string is a
+     `key` if, after skipping trailing whitespace, the next character is
+     `:`, otherwise it's a `string` value; the catch-all numeric/keyword
+     branch classifies by comparing the captured text against
+     `"true"`/`"false"`/`"null"`, else assumes `number`. Token positions
+     are `{line = <0-based, within the returned text>, col_start,
+     col_end}` byte offsets — deliberately relative to the pretty-printed
+     output, not the original compact input, so `unicode.lua`'s
+     `body_block` only needs to add its own line offset (where the body
+     text starts within the overall `out` buffer) to place them correctly;
+     no separate reparsing of the already-pretty-printed text is needed.
+     Existing call sites that don't pass `tokens` (markdown renderer's
+     body pretty-printing) are unaffected — token recording is skipped
+     entirely when the argument is nil. Chose this over driving a
+     treesitter JSON parser specifically to avoid depending on that parser
+     being installed at all (the render-markdown.nvim filetype-hooking
+     detour was reason enough to keep this self-contained).
+   - **Command block line-wrapping**: unicode-only (markdown's is inside a
+     ` ```sh ` fence and left alone). `M.render`'s `format_command(cmd_str)`
+     splits on `" && "` and rejoins with `" && \\\n"` — the generated
+     `cd ... && HTTPYAC_PLUGIN=... httpyac send ...` command is otherwise a
+     single very long line that forces horizontal scroll in the result
+     split. Naive since it doesn't account for `&&` appearing inside a
+     quoted argument, but safe here because `runner.lua` is the only
+     source of `cmd_str` and controls exactly how many `&&`s it contains.
+   Two things the markdown renderer does
+   deliberately, not incidentally (equally applicable to why the unicode
+   renderer exists as an alternative):
    - **Header table truncation**: values longer than
      `config.options.max_header_value_len` are truncated with `…` (long
      bearer tokens etc. otherwise break table rendering in
      `render-markdown.nvim`, which is why this exists). The full value is
      recorded in a `line number -> full value` map returned alongside the
-     rendered lines.
+     rendered lines. The unicode renderer truncates the same way (shared
+     `truncate()`) so its box-drawing table doesn't blow out to the width
+     of an untruncated JWT either.
    - **JSON body pretty-printing**: via `lua/httpfly/json.lua`, a
      bracket-scanning re-indenter (not `vim.json.decode` + re-encode) so that
      object key order and string contents are preserved exactly — decoding
      to a Lua table would lose key order since Lua tables are unordered.
+     Both renderers call it identically.
 5. `lua/httpfly/runner.lua` writes the rendered lines into a reused scratch
    buffer (`httpfly://result`, opened in a vertical split), registers the
    truncation map with `lua/httpfly/preview.lua`, and saves the same
-   markdown to `.httpfly/history/<YYYYMMDD-HHMMSS-microseconds>.md` under
-   `vim.fn.getcwd()` via `lua/httpfly/history.lua`. History and the session
-   file (above) deliberately share the single `.httpfly/` directory so a
-   project only needs one `.gitignore` entry to cover both. History is only
-   written
+   rendered output to
+   `.httpfly/history/<YYYYMMDD-HHMMSS-microseconds>.{md,txt}` (extension
+   matches `config.options.output_style`) under `vim.fn.getcwd()` via
+   `lua/httpfly/history.lua`. History and the session file (above)
+   deliberately share the single `.httpfly/` directory so a project only
+   needs one `.gitignore` entry to cover both. History is only written
    when httpyac's JSON parsed successfully — the raw-fallback path (httpyac
    crashed before emitting JSON) is not saved since there's nothing useful to
    keep.
