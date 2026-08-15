@@ -26,24 +26,33 @@ local function read_json(path)
   return decoded
 end
 
--- "$shared" (and httpyac's other special key, "$default") aren't real,
--- selectable environments -- they're merged into whichever real one you
--- pick (see build_cmd() in runner.lua), so they're excluded here
-local function read_env_names(path)
-  local names = {}
-  for k in pairs(read_json(path)) do
-    if k:sub(1, 1) ~= "$" then
-      table.insert(names, k)
-    end
-  end
-  table.sort(names)
-  return names
-end
-
 -- private env file sits next to the shared one, e.g.
 -- http-client.env.json -> http-client.private.env.json
 local function private_file_for(env_file)
   return (env_file:gsub("%.env%.json$", ".private.env.json"))
+end
+
+-- environment names from both the shared and private files, unioned --
+-- httpyac itself resolves an environment defined only in the private file
+-- (confirmed against a real binary), so a picker sourced from the shared
+-- file alone would hide private-only environments. "$shared" (and
+-- httpyac's other special key, "$default") aren't real, selectable
+-- environments -- they're merged into whichever real one you pick (see
+-- build_cmd() in runner.lua), so they're excluded here.
+local function read_env_names(env_file)
+  local names = {}
+  local seen = {}
+  local private_file = private_file_for(env_file)
+  for _, path in ipairs({ env_file, private_file }) do
+    for k in pairs(read_json(path)) do
+      if k:sub(1, 1) ~= "$" and not seen[k] then
+        seen[k] = true
+        table.insert(names, k)
+      end
+    end
+  end
+  table.sort(names)
+  return names
 end
 
 local function merge_env(vars, decoded, name)

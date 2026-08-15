@@ -36,8 +36,19 @@ Request flow, end to end:
    (`vim.fs.find(..., { upward = true })`) and keeps the selected environment
    name in a module-local table **keyed by that env file's path**, not
    globally — so switching directories/projects doesn't bleed state.
-   `:HttpEnv` with no argument opens a `vim.ui.select` picker over that
-   file's top-level keys; `:HttpEnv <name>` sets it directly.
+   `:HttpEnv` with no argument opens a `vim.ui.select` picker over
+   `read_env_names()`'s result, which unions top-level keys from **both**
+   the shared file and its private counterpart (`private_file_for()`),
+   deduped, `$`-prefixed keys excluded. Originally only scanned the shared
+   file; fixed after confirming against a real httpyac binary that it
+   resolves an environment defined *only* in the private file just fine
+   (its own `Fd()`/env-file loader unions both files' keys the same way),
+   so a picker sourced from the shared file alone was hiding legitimate
+   environments — caught via a real `"private"`-only environment added to
+   `doc/examples/http-client.private.env.json`. `:HttpEnv <name>` sets it
+   directly, without going through the picker/`read_env_names()` at all
+   (and without validating the name exists anywhere, same as before this
+   fix).
    - `env.status(bufnr)` returns the winbar text; `ftplugin/http.lua` wires
      it up as a **live** winbar expression
      (`%{%v:lua.require('httpfly.env').status()%}`), not a value set once

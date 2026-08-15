@@ -9,6 +9,7 @@
 
 ###
 # @name PreRequestExample
+# @lang javascript
 < {%
   request.variables.set("request_id", "req-" + Date.now());
 %}
@@ -17,6 +18,7 @@ GET http://localhost:8080/get?request_id={{request_id}} HTTP/1.1
 
 ###
 # @name Login
+# @lang javascript
 # Stand-in for a real login call. httpbin's /uuid returns a fresh,
 # server-generated value each time -- playing the role of a token a real
 # auth endpoint would issue in its response body.

@@ -107,9 +107,10 @@ The currently selected environment for the file is shown in the winbar
 ### Environments
 
 `:HttpEnv` looks for the nearest `http-client.env.json` by walking up from
-the current file's directory, and lists its top-level keys as choices — the
-same file format used by IntelliJ/WebStorm's HTTP Client, so an existing one
-works as-is:
+the current file's directory, and lists its (and its private file's, see
+below — an environment defined only there still shows up) top-level keys
+as choices — the same file format used by IntelliJ/WebStorm's HTTP Client,
+so an existing one works as-is:
 
 ```json
 {
