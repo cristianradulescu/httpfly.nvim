@@ -1,0 +1,17 @@
+local M = {}
+
+M.defaults = {
+  cmd = "httpyac",
+  env_file = "http-client.env.json",
+  keymaps = true,
+  max_header_value_len = 100,
+  preview_keymap = "K",
+}
+
+M.options = vim.deepcopy(M.defaults)
+
+function M.setup(opts)
+  M.options = vim.tbl_deep_extend("force", M.defaults, opts or {})
+end
+
+return M

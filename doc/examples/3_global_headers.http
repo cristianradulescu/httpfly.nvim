@@ -1,0 +1,24 @@
+# A "{{@request ... }}" block placed before the first "###" separator runs
+# before EVERY request in the file -- unlike the "< {% ... %}" pre-request
+# block from 2_scripting.http, which only applies to the single request it's
+# attached to. Useful for headers you want on every request in a file, like
+# a custom User-Agent, without repeating it on each one.
+#
+# Run `make httpbin-up` from the repo root first (requires Docker).
+
+{{@request
+  request.headers["User-Agent"] = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36";
+}}
+
+###
+# @name Get
+GET http://localhost:8080/get HTTP/1.1
+
+###
+# @name Post
+POST http://localhost:8080/post HTTP/1.1
+Content-Type: application/json
+
+{
+  "hello": "world"
+}
