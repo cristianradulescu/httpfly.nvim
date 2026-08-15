@@ -65,11 +65,15 @@ end
 
 local function run(cmd, cwd)
   local buf = open_result_buf()
-  local plugin_env = { HTTPYAC_PLUGIN = session.plugin_path() }
+  local plugin_env = {
+    HTTPYAC_PLUGIN = session.plugin_path(),
+    HTTPFLY_SESSION_FILE = session.file_for_cwd(vim.fn.getcwd()),
+  }
   local cmd_str = string.format(
-    "cd %s && HTTPYAC_PLUGIN=%s %s",
+    "cd %s && HTTPYAC_PLUGIN=%s HTTPFLY_SESSION_FILE=%s %s",
     shell_quote({ cwd }),
     shell_quote({ plugin_env.HTTPYAC_PLUGIN }),
+    shell_quote({ plugin_env.HTTPFLY_SESSION_FILE }),
     shell_quote(cmd)
   )
 
@@ -131,7 +135,14 @@ local function build_cmd(extra)
 
   local e = env.get(0)
   if e then
-    vim.list_extend(cmd, { "--env", e })
+    -- httpyac only merges "$shared" into the selected environment if it's
+    -- explicitly passed as an additional --env value (confirmed against a
+    -- real httpyac binary) -- there's no automatic merge the way env.lua's
+    -- own merge_env() replicates for :HttpEnvVars, so without this,
+    -- {{a_shared_var}} would resolve in the picker's display but throw a
+    -- ReferenceError on an actual send. Harmless to always include: an
+    -- --env value with no matching key in the file is silently ignored.
+    vim.list_extend(cmd, { "--env", "$shared", e })
   end
 
   return cmd
@@ -182,11 +193,7 @@ function M.send_all()
 end
 
 function M.session_clear()
-  local file = require_file()
-  if not file then
-    return
-  end
-  if session.clear(resolve_cwd(file)) then
+  if session.clear(vim.fn.getcwd()) then
     vim.notify("httpfly: session cleared", vim.log.levels.INFO)
   else
     vim.notify("httpfly: no session file to clear", vim.log.levels.INFO)

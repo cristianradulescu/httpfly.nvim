@@ -26,10 +26,15 @@ local function read_json(path)
   return decoded
 end
 
+-- "$shared" (and httpyac's other special key, "$default") aren't real,
+-- selectable environments -- they're merged into whichever real one you
+-- pick (see build_cmd() in runner.lua), so they're excluded here
 local function read_env_names(path)
   local names = {}
   for k in pairs(read_json(path)) do
-    table.insert(names, k)
+    if k:sub(1, 1) ~= "$" then
+      table.insert(names, k)
+    end
   end
   table.sort(names)
   return names
@@ -125,7 +130,7 @@ function M.vars(bufnr)
     env_keys[k] = true
   end
 
-  local session_vars = session.load(vim.fn.fnamemodify(env_file, ":h"))
+  local session_vars = session.load(vim.fn.getcwd())
   local session_keys = {}
   for k, v in pairs(session_vars) do
     vars[k] = v

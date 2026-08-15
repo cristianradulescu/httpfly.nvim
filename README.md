@@ -32,10 +32,12 @@ See `doc/examples/` for runnable `.http` files: `1_basic.http` (plain
 GET/POST), `2_scripting.http` (pre-/post-request scripting, including a
 login → token → authenticated-request chain), `3_global_headers.http`
 (a `{{@request ... }}` block applying a header, e.g. a custom User-Agent,
-to every request in the file), and `4_debugging.http` (using
+to every request in the file), `4_debugging.http` (using
 `client.test(...)` to dump values into the rendered output, since
-`console.log` is silently dropped — see "Scripting notes" below). They hit
-a local httpbin instance — run
+`console.log` is silently dropped — see "Scripting notes" below), and
+`5_environments.http` (uses `{{base_url}}`/`{{client_name}}` from the
+`http-client.env.json` in that same directory — pick an environment with
+`:HttpEnv` first). They hit a local httpbin instance — run
 `make httpbin-up` first (requires Docker), `make httpbin-down` when done.
 
 ## Requirements
@@ -139,10 +141,12 @@ separate invocation — even though it works fine within a single
 "just work" automatically: it points httpyac at a small bundled plugin
 (`httpyac-plugin/session-persist.js`, loaded via the `HTTPYAC_PLUGIN` env
 var on every send) that mirrors httpyac's own global-variable cache to
-`.httpfly/session.json` next to your env file. No changes to your `.http`
-files or scripts are needed — write `client.global.set(...)` exactly as you
-already do; it now survives across separate `:HttpSend` calls, and
-`{{your_var}}` resolves correctly in later requests without ever touching
+`.httpfly/session.json` under your current working directory — the same
+place `.httpfly/history/` lives (see below), regardless of where your
+`.http` file or env file are. No changes to your `.http` files or scripts
+are needed — write `client.global.set(...)` exactly as you already do; it
+now survives across separate `:HttpSend` calls, and `{{your_var}}`
+resolves correctly in later requests without ever touching
 `http-client.env.json`.
 
 Run `:HttpSessionClear` to delete the session file (e.g. once a token

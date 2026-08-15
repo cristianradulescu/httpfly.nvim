@@ -48,7 +48,22 @@ Request flow, end to end:
      real send actually uses: shared file's `"$shared"` → shared file's
      selected env → private file's `"$shared"` → private file's selected
      env → session vars (`session.load()`, see below), each layer
-     overwriting the last. The private file's path is derived from
+     overwriting the last. Getting `runner.lua`'s actual `httpyac send`
+     invocation to match this display took a second fix: httpyac does
+     **not** auto-merge `"$shared"` into whatever `--env` you pass — traced
+     into its source (`Vd(t,e)`, the function backing `-e/--env`) and
+     confirmed empirically that `--env local` alone never sees `$shared`
+     at all, only `--env '$shared' local` (multiple `--env` values, in
+     that order so the named environment overrides shared on conflict)
+     does. Passing an `--env` value with no matching key in the file is
+     silently ignored (also confirmed), so `build_cmd()` always adds
+     `--env $shared <selected>` whenever an environment is selected,
+     unconditionally — no need to check whether the file actually has a
+     `$shared` key first. Without this, `:HttpEnvVars` would show a
+     `$shared` value as if it were in effect while an actual send threw a
+     `ReferenceError` for it — caught via `doc/examples/5_environments.http`
+     failing despite looking correct. The private file's path is derived
+     from
      `config.options.env_file` by suffix substitution
      (`http-client.env.json` -> `http-client.private.env.json`), not a
      separate config option. `env.vars()` returns `vars, name, session_keys,
@@ -98,24 +113,36 @@ Request flow, end to end:
      `httpyac-plugin/session-persist.js` (loaded via `HTTPYAC_PLUGIN`, set
      by `runner.lua` on every `vim.system` call, resolved from this
      plugin's own install path via `session.plugin_path()` using
-     `debug.getinfo`) just mirrors it to `.httpfly/session.json` next to
-     the env file (creating the `.httpfly/` directory if needed — the JS
-     side does this itself with `fs.mkdirSync(..., { recursive: true })`
-     since it writes into a subdirectory now, not the cwd directly): load
-     it into the store on startup, write it back out on
-     every `sessionStore.onSessionChanged()`. httpyac's own `{{var}}`
-     resolution and `client.global` API do the rest, completely
-     unmodified — this was verified against a real httpyac binary across
-     two genuinely separate processes before being adopted. Only sessions
-     whose `type` ends in `global_cache` are persisted (empirically
-     determined — `sessionStore.userSessions` also holds transient
-     per-connection sessions with live sockets that aren't
+     `debug.getinfo` — `:p`-forced to absolute, since a relative
+     runtimepath entry, e.g. a test harness's `set rtp+=.`, would otherwise
+     leak a relative path into the child httpyac process's env, which then
+     resolves against the wrong directory and silently fails to load)
+     mirrors the store to `.httpfly/session.json`: load it into the store
+     on startup, write it back out on every `sessionStore.onSessionChanged()`.
+     httpyac's own `{{var}}` resolution and `client.global` API do the
+     rest, completely unmodified — this was verified against a real
+     httpyac binary across two genuinely separate processes before being
+     adopted. Only sessions whose `type` ends in `global_cache` are
+     persisted (empirically determined — `sessionStore.userSessions` also
+     holds transient per-connection sessions with live sockets that aren't
      JSON-serializable and would throw on a circular-structure error if
-     included). `:HttpSessionClear` (`session.clear(cwd)`) deletes the
-     session file. `session.load(cwd)` (same file-parsing/filtering logic,
-     read-only) lets `env.vars()` show these values merged into
-     `:HttpEnvVars` output, distinct from the JS plugin above, which
-     handles the actual write side.
+     included).
+     Where that file lives is **not** tied to `resolve_cwd()` (the env
+     file's directory that httpyac's own process cwd uses, needed so it
+     can find `http-client.env.json`) — those two concerns were originally
+     conflated, which meant a `.http` file with no env file anywhere above
+     it (e.g. `doc/examples/*.http`, which hardcode `localhost:8080`
+     directly) got its own separate `.httpfly/` next to itself, splitting
+     state across two directories instead of the one `.gitignore` entry
+     was supposed to cover. Decoupled via `HTTPFLY_SESSION_FILE`, an env
+     var `session-persist.js` checks before falling back to its own
+     `process.cwd()`-relative default; `runner.lua` always sets it to
+     `session.file_for_cwd(vim.fn.getcwd())`, matching where
+     `history.lua` already put `.httpfly/history/`. `env.lua`'s
+     `session.load(vim.fn.getcwd())` (same file-parsing/filtering logic,
+     read-only, lets `:HttpEnvVars` show these values merged in) and
+     `runner.lua`'s `M.session_clear()` (`session.clear(vim.fn.getcwd())`)
+     were updated to match.
 4. `lua/httpfly/format.lua` is a thin dispatcher: it decodes the JSON
    payload (`format/shared.lua`'s `extract_json`, defensive against any
    stray non-JSON text before the `{` — relevant if `cmd` is ever invoked

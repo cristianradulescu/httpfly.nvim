@@ -13,8 +13,13 @@ const path = require('path');
 
 const SESSION_FILENAME = '.httpfly/session.json';
 
+// httpyac's own process cwd is set to the env file's directory (needed so
+// httpyac can find http-client.env.json when the .http file being sent
+// lives in a subdirectory below it) -- that's not necessarily where the
+// user wants session state to live. HTTPFLY_SESSION_FILE, when set,
+// overrides the default of "next to wherever httpyac's cwd happens to be".
 function sessionFile() {
-  return path.join(process.cwd(), SESSION_FILENAME);
+  return process.env.HTTPFLY_SESSION_FILE || path.join(process.cwd(), SESSION_FILENAME);
 }
 
 // only global-variable-cache sessions are persisted; httpyac's sessionStore

@@ -8,7 +8,12 @@ M.filename = ".httpfly/session.json"
 -- plugin manager installed httpfly.nvim
 function M.plugin_path()
   local source = debug.getinfo(1, "S").source:sub(2)
-  local plugin_root = vim.fn.fnamemodify(source, ":h:h:h")
+  -- :p forces this to an absolute path even if the runtimepath entry this
+  -- file was loaded from was itself relative (e.g. a test harness using
+  -- `set rtp+=.`); the child httpyac process runs with a different cwd, so
+  -- a relative HTTPYAC_PLUGIN value would resolve against the wrong
+  -- directory there and silently fail to load
+  local plugin_root = vim.fn.fnamemodify(source, ":p:h:h:h")
   return plugin_root .. "/httpyac-plugin/session-persist.js"
 end
 
