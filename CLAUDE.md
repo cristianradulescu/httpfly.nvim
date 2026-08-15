@@ -102,7 +102,7 @@ Request flow, end to end:
    `format.render(stdout, cmd_str)` so it's directly copy-pasteable for
    debugging.
    - **Cross-invocation variable persistence** (`lua/httpfly/session.lua`,
-     `httpyac-plugin/session-persist.js`): `client.global.set(...)` in an
+     `httpyac-plugin/httpfly.js`): `client.global.set(...)` in an
      httpyac script only lives for the duration of one `httpyac` process by
      default, so a variable set by request A's script (e.g. an MFA token)
      is invisible to request B if they're sent separately via two
@@ -121,7 +121,7 @@ Request flow, end to end:
      function (via a local `.httpyac.js`, or via the `HTTPYAC_PLUGIN` env
      var pointing at any JS module — httpyac merges both, they don't
      conflict), and `api.sessionStore` is that same singleton. So
-     `httpyac-plugin/session-persist.js` (loaded via `HTTPYAC_PLUGIN`, set
+     `httpyac-plugin/httpfly.js` (loaded via `HTTPYAC_PLUGIN`, set
      by `runner.lua` on every `vim.system` call, resolved from this
      plugin's own install path via `session.plugin_path()` using
      `debug.getinfo` — `:p`-forced to absolute, since a relative
@@ -146,7 +146,7 @@ Request flow, end to end:
      directly) got its own separate `.httpfly/` next to itself, splitting
      state across two directories instead of the one `.gitignore` entry
      was supposed to cover. Decoupled via `HTTPFLY_SESSION_FILE`, an env
-     var `session-persist.js` checks before falling back to its own
+     var `httpfly.js` checks before falling back to its own
      `process.cwd()`-relative default; `runner.lua` always sets it to
      `session.file_for_cwd(vim.fn.getcwd())`, matching where
      `history.lua` already put `.httpfly/history/`. `env.lua`'s
@@ -154,6 +154,90 @@ Request flow, end to end:
      read-only, lets `:HttpEnvVars` show these values merged in) and
      `runner.lua`'s `M.session_clear()` (`session.clear(vim.fn.getcwd())`)
      were updated to match.
+   - **`@download`** (same `httpyac-plugin/httpfly.js` file — httpyac only
+     supports one `HTTPYAC_PLUGIN` path at a time, so both features live
+     in one file, as two separate `register*(api)` functions both called
+     from `configureHooks`; started life as a project-local
+     `doc/examples/httpyac.config.js` before being generalized in here).
+     `client.global.set`'s "response.body is lossy for binary content"
+     problem (see `format/shared.lua`'s `is_binary` bullet below)
+     independently confirmed a second time here: `response.body` inside a
+     `> {% ... %}` script is *always* decoded to a JS string somewhere in
+     httpyac's own response pipeline before a script ever sees it (JSON →
+     already-parsed object, HTML/XML → a DOM `Document`, otherwise → a
+     string) — but `response.rawBody`, a genuine undecoded `Buffer`, does
+     exist one step earlier in the pipeline, in the `onResponse` hook,
+     just not by the time an inline script runs. That's the only reason
+     this needs to be a plugin (`api.hooks.onResponse.addHook(...)`)
+     rather than something expressible inline in a `.http` file.
+     `context.httpRegion.metaData.download` is `true` for a bare
+     `# @download`, or the annotation's string value for
+     `# @download some-name.ext` (confirmed empirically) — `pickFilename()`
+     only runs for the `true` case; a string value is used as the filename
+     directly. `pickFilename()` mirrors browser download-filename
+     priority: `Content-Disposition`'s `filename=`/`filename*=UTF-8''...`
+     (regex-parsed) → the URL's last path segment, only if it contains a
+     `.` (a bare route like `.../image/png` doesn't count) → a
+     content-type-guessed extension as the final fallback. Saved under
+     `HTTPFLY_DOWNLOAD_DIR` (same env-var-override pattern as
+     `HTTPFLY_SESSION_FILE`, set by `runner.lua` to
+     `session.download_dir_for_cwd(vim.fn.getcwd())`, i.e.
+     `.httpfly/downloads/`), not wherever httpyac's own process cwd
+     happens to be, for the same reason session storage needed that
+     decoupling.
+     **Path traversal**: the resolved filename (whichever tier of
+     `pickFilename()` produced it, or the `@download` value directly) is
+     treated as untrusted — it can come straight from the HTTP response
+     (`Content-Disposition`/the URL) via `pickFilename()`, which reflects
+     whatever a malicious or compromised server chooses to send,
+     independent of how trusted the `.http` file itself is. Flagged by
+     automated security review, confirmed exploitable, and fixed:
+     `path.basename(requested)` alone is *not* sufficient — verified with
+     `node` directly that `path.basename("..")` returns `".."` unchanged
+     (it only strips components after the last `/`, and a bare `..` has
+     none), so `path.join(dir, "..")` still escapes to the parent
+     directory. The actual guard is `path.resolve(dest).startsWith(
+     path.resolve(dir) + path.sep)`, checked *after* `path.basename()`,
+     which throws rather than writing if it fails — confirmed this
+     specific bare-`".."` case (via a real `Content-Disposition:
+     filename=".."` response) throws `httpfly: refusing to save download
+     outside ...` and writes nothing, while a `../../pwned.txt`-style
+     value (which `path.basename()` alone already neutralizes) still
+     lands safely inside the download directory as `pwned.txt`. Applied
+     once, at the single point where `dest` is computed — not duplicated
+     across each `pickFilename()` tier — since every candidate necessarily
+     flows through that one write site before `fs.writeFileSync` runs.
+     **Surfacing the saved path in the rendered output** (a dedicated
+     "Download" section, right after the response body) needed its own
+     workaround: `httpyac.js`'s `onResponse` hook runs at the httpyac-
+     library level, entirely outside anything a `.http` file's own script
+     can see, so there's no existing channel for it to hand information
+     to `--json`'s output at all. Tried the obvious thing first and
+     confirmed empirically that it doesn't work: setting an arbitrary
+     extra field directly on `response` (e.g. `response.httpflyDownloadPath
+     = dest`) does **not** survive `--json` serialization — httpyac
+     clearly serializes a fixed, known shape rather than the object as
+     given, since the extra field silently disappears. What *does*
+     survive: pushing onto `context.httpRegion.testResults` (a plain
+     mutable array — confirmed the same way, by pushing a fake `{message,
+     status: "SUCCESS"}` and finding it present in the `--json` output).
+     So the hook pushes a synthetic testResult whose `message` is
+     `DOWNLOAD_MARKER + dest` (`DOWNLOAD_MARKER = 'httpfly:download:'`,
+     duplicated as a literal in both `httpfly.js` and
+     `format/shared.lua`'s `M.DOWNLOAD_MARKER` — no shared source between
+     JS and Lua, so this has to be kept in sync by hand across that
+     boundary if it's ever changed). `shared.extract_download(test_results)`
+     scans a request's `testResults` for that prefix, returning the
+     extracted path (or `nil`) plus a **filtered** copy of `testResults`
+     with the marker entry removed — both renderers call this once per
+     request, insert a "Download"/"▸ Download" section using the
+     extracted path immediately after rendering the response body (only
+     when non-nil), and use the *filtered* list (not the original
+     `req.testResults`) for the "Test Results" section, so the synthetic
+     entry never masquerades as a real assertion there. Confirmed a
+     request with `@download` *and* real `client.test(...)` calls renders
+     both sections correctly, with only the genuine assertions showing
+     under "Test Results".
 4. `lua/httpfly/format.lua` is a thin dispatcher: it decodes the JSON
    payload (`format/shared.lua`'s `extract_json`, defensive against any
    stray non-JSON text before the `{` — relevant if `cmd` is ever invoked
@@ -222,6 +306,30 @@ Request flow, end to end:
      treesitter JSON parser specifically to avoid depending on that parser
      being installed at all (the render-markdown.nvim filetype-hooking
      detour was reason enough to keep this self-contained).
+   - **Binary body guard** (`shared.is_binary`): both renderers' `body_block`
+     check `body:find("\0", 1, true)` before doing anything else with a
+     response body, substituting a `(binary content, N bytes — not
+     shown)`-style placeholder if found. Not just a UX nicety — without it,
+     `history.save()` crashed outright (`E5108`: `vim.fn.writefile()`
+     "Expected a Number or a String, Blob found") for any response whose
+     body happened to contain a NUL byte (found via
+     `doc/examples/9_binary_download.http`, a genuinely binary image
+     response). Root cause: a JSON string containing a NUL byte decodes to a
+     perfectly normal Lua `string` (Lua strings are byte-counted, not
+     NUL-terminated, so embedded NULs are fine on that side) — but once
+     that string crosses into a VimL-facing API call like
+     `vim.fn.writefile()`'s line-list argument, Neovim's own Lua↔VimL
+     bridge silently promotes just that one NUL-containing element to a
+     `Blob` (VimL strings *are* NUL-terminated, so this is how Neovim
+     preserves the bytes across that boundary) — and `writefile()` rejects
+     a `Blob` appearing inside what's supposed to be a list of line
+     strings. A NUL byte is treated as a sufficient (and convenient: exact,
+     no false positives) signal that content isn't real text — valid
+     JSON/XML/HTML/plain text never contains one raw. This only guards
+     *this plugin's own rendering*; it has no bearing on
+     `9_binary_download.http`'s actual download (that succeeds or fails
+     entirely independently, via httpyac's own `onResponse` hook, before
+     this plugin's JSON parsing ever runs).
    - **Command block line-wrapping**: unicode-only (markdown's is inside a
      ` ```sh ` fence and left alone). `M.render`'s `format_command(cmd_str)`
      splits on `" && "` and rejoins with `" && \\\n"` — the generated

@@ -1,0 +1,38 @@
+# Saving a genuinely binary response (an image here) to disk, byte-perfect,
+# via a "# @download" annotation -- a feature httpfly.nvim's own bundled
+# httpyac plugin (httpyac-plugin/httpfly.js) implements, not httpyac itself.
+#
+# 8_save_response.http's post-request script approach (require("fs") +
+# response.body) doesn't work for this: httpyac decodes response.body to a
+# JS string somewhere in its own pipeline before any "> {% ... %}" script
+# ever sees it, and that's lossy for arbitrary binary bytes -- confirmed by
+# testing it against this exact endpoint and finding the saved file's
+# first byte, and its overall size, no longer matched the original PNG.
+#
+# response.rawBody (a real, undecoded Buffer) does exist -- just not by the
+# time an inline script runs. It's still there one step earlier, in the
+# onResponse hook, which is the only place a plugin (rather than a script
+# you write yourself) can get at it -- see httpyac-plugin/httpfly.js.
+#
+# Saved under .httpfly/downloads/ in your current working directory (same
+# place .httpfly/history/ and .httpfly/session.json already live -- one
+# .gitignore entry covers all of it). "@download" alone picks a filename
+# automatically, in the same priority order browsers use: Content-
+# Disposition's filename, then the URL's last path segment if it looks
+# like a real filename, then a content-type-guessed extension. httpbin's
+# /image/png sends neither of the first two, so DownloadAuto always lands
+# on the fallback in practice -- that's still the right thing to have,
+# since plenty of real APIs don't send a filename hint either.
+# "@download <name>" (see DownloadNamed below) overrides it explicitly.
+#
+# Run `make httpbin-up` from the repo root first (requires Docker).
+
+###
+# @name DownloadAuto
+# @download
+GET http://localhost:8080/image/png HTTP/1.1
+
+###
+# @name DownloadNamed
+# @download my-photo.png
+GET http://localhost:8080/image/png HTTP/1.1

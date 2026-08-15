@@ -68,12 +68,14 @@ local function run(cmd, cwd)
   local plugin_env = {
     HTTPYAC_PLUGIN = session.plugin_path(),
     HTTPFLY_SESSION_FILE = session.file_for_cwd(vim.fn.getcwd()),
+    HTTPFLY_DOWNLOAD_DIR = session.download_dir_for_cwd(vim.fn.getcwd()),
   }
   local cmd_str = string.format(
-    "cd %s && HTTPYAC_PLUGIN=%s HTTPFLY_SESSION_FILE=%s %s",
+    "cd %s && HTTPYAC_PLUGIN=%s HTTPFLY_SESSION_FILE=%s HTTPFLY_DOWNLOAD_DIR=%s %s",
     shell_quote({ cwd }),
     shell_quote({ plugin_env.HTTPYAC_PLUGIN }),
     shell_quote({ plugin_env.HTTPFLY_SESSION_FILE }),
+    shell_quote({ plugin_env.HTTPFLY_DOWNLOAD_DIR }),
     shell_quote(cmd)
   )
 

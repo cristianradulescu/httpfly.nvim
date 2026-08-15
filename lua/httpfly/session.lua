@@ -1,9 +1,11 @@
 local M = {}
 
 M.filename = ".httpfly/session.json"
+M.download_dirname = ".httpfly/downloads"
 
--- absolute path to the bundled httpyac plugin (httpyac-plugin/session-persist.js)
--- that mirrors httpyac's own global-variable sessionStore to disk; computed
+-- absolute path to the bundled httpyac plugin (httpyac-plugin/httpfly.js)
+-- that mirrors httpyac's own global-variable sessionStore to disk (and
+-- handles "@download" -- see runner.lua's HTTPFLY_DOWNLOAD_DIR); computed
 -- from this file's own location so it works regardless of where the user's
 -- plugin manager installed httpfly.nvim
 function M.plugin_path()
@@ -14,16 +16,20 @@ function M.plugin_path()
   -- a relative HTTPYAC_PLUGIN value would resolve against the wrong
   -- directory there and silently fail to load
   local plugin_root = vim.fn.fnamemodify(source, ":p:h:h:h")
-  return plugin_root .. "/httpyac-plugin/session-persist.js"
+  return plugin_root .. "/httpyac-plugin/httpfly.js"
 end
 
 function M.file_for_cwd(cwd)
   return cwd .. "/" .. M.filename
 end
 
+function M.download_dir_for_cwd(cwd)
+  return cwd .. "/" .. M.download_dirname
+end
+
 -- flat key -> value map of variables currently persisted in the session
--- file (mirrors what httpyac-plugin/session-persist.js writes out); used
--- by env.lua to show session overrides alongside env-file variables
+-- file (mirrors what httpyac-plugin/httpfly.js writes out); used by
+-- env.lua to show session overrides alongside env-file variables
 function M.load(cwd)
   local path = M.file_for_cwd(cwd)
   if vim.fn.filereadable(path) == 0 then

@@ -41,11 +41,16 @@ to every request in the file), `4_debugging.http` (using
 to `generate-token.sh` and using its stdout as the request's token — for
 auth flows too complex to reimplement inline), `7_forms.http`
 (`application/x-www-form-urlencoded`, `multipart/form-data`, and a
-multipart file upload via `< ./path`), and `8_download.http` (a
-post-request script saving a JSON/text response body to `/tmp` —
-including a note on why saving genuinely binary content this way doesn't
-work reliably). They hit a local httpbin instance — run `make httpbin-up`
-first (requires Docker), `make httpbin-down` when done.
+multipart file upload via `< ./path`), `8_save_response.http` (a
+post-request script saving a JSON/text response body to `/tmp` for its
+own sake — a snapshot/fixture, not a file the server means for you to
+download — including a note on why this technique doesn't work reliably
+for genuinely binary content), and `9_binary_download.http` (the standard
+way to download a file — byte-perfect, including binary content — via
+`# @download`, saved under `.httpfly/downloads/`; see that file's
+comments and "Downloading files" below). They hit a local httpbin
+instance — run `make httpbin-up` first (requires Docker), `make
+httpbin-down` when done.
 
 ## Requirements
 
@@ -147,8 +152,8 @@ would normally be gone by the time you `:HttpSend` a later request as a
 separate invocation — even though it works fine within a single
 `:HttpSendAll` (one process for the whole file). This plugin makes that
 "just work" automatically: it points httpyac at a small bundled plugin
-(`httpyac-plugin/session-persist.js`, loaded via the `HTTPYAC_PLUGIN` env
-var on every send) that mirrors httpyac's own global-variable cache to
+(`httpyac-plugin/httpfly.js`, loaded via the `HTTPYAC_PLUGIN` env var on
+every send) that mirrors httpyac's own global-variable cache to
 `.httpfly/session.json` under your current working directory — the same
 place `.httpfly/history/` lives (see below), regardless of where your
 `.http` file or env file are. No changes to your `.http` files or scripts
@@ -159,6 +164,32 @@ resolves correctly in later requests without ever touching
 
 Run `:HttpSessionClear` to delete the session file (e.g. once a token
 expires).
+
+### Downloading files
+
+`# @download` on a request saves its raw response body to disk,
+byte-perfect — including genuinely binary content (images, PDFs, zips,
+...), which scripting it yourself with `require("fs")` and
+`response.body` can't do reliably (`response.body` is decoded to a JS
+string somewhere in httpyac's own pipeline before any script ever sees
+it, which loses information for arbitrary bytes; see
+`doc/examples/8_save_response.http` vs `9_binary_download.http`). This is the
+same bundled plugin as session persistence above
+(`httpyac-plugin/httpfly.js`) — it hooks into httpyac's `onResponse`
+event, one step before that lossy conversion happens, where the real
+undecoded bytes are still available.
+
+Bare `# @download` picks a filename automatically, in the same priority
+order browsers use: `Content-Disposition`'s filename, then the URL's last
+path segment if it looks like a real filename, then a
+content-type-guessed extension. `# @download some-name.ext` overrides
+that with an explicit filename. Either way, the file is saved under
+`.httpfly/downloads/` in your current working directory — the same place
+`.httpfly/history/` and `.httpfly/session.json` live, so the one
+`.gitignore` entry (see below) still covers everything.
+
+The saved path also shows up as its own "Download" section in the
+rendered output, right after the response body.
 
 ### Scripting notes
 

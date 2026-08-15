@@ -33,6 +33,9 @@ local function body_block(body, headers)
   if not body or body == "" then
     return { "_(empty body)_" }
   end
+  if shared.is_binary(body) then
+    return { string.format("_(binary content, %d bytes — not shown)_", #body) }
+  end
 
   local lang = shared.body_lang(headers)
   local text = body
@@ -77,6 +80,7 @@ function M.render(decoded, cmd_str)
 
   for _, req in ipairs(decoded.requests) do
     local resp = req.response
+    local download_path, test_results = shared.extract_download(req.testResults)
     local title = (req.name and req.name ~= "") and req.name or req.fileName
     table.insert(out, "## " .. title)
     table.insert(out, "")
@@ -120,12 +124,19 @@ function M.render(decoded, cmd_str)
       table.insert(out, "")
       vim.list_extend(out, body_block(resp.body, resp.headers))
       table.insert(out, "")
+
+      if download_path then
+        table.insert(out, "### Download")
+        table.insert(out, "")
+        table.insert(out, "`" .. download_path .. "`")
+        table.insert(out, "")
+      end
     end
 
-    if req.testResults and #req.testResults > 0 then
+    if test_results and #test_results > 0 then
       table.insert(out, "### Test Results")
       table.insert(out, "")
-      for _, t in ipairs(req.testResults) do
+      for _, t in ipairs(test_results) do
         table.insert(out, string.format("- %s %s", shared.test_mark(t.status), t.message or t.status or ""))
       end
       table.insert(out, "")
