@@ -28,13 +28,23 @@ local function open_result_buf()
     vim.bo[buf].swapfile = false
     vim.bo[buf].bufhidden = "hide"
     vim.api.nvim_win_set_buf(win, buf)
+    vim.wo[win].number = false
+    vim.wo[win].relativenumber = false
     vim.keymap.set("n", config.options.preview_keymap, function()
       preview.show(buf)
     end, { buffer = buf, desc = "httpfly: show full value under cursor" })
+    vim.keymap.set(
+      "n",
+      "q",
+      "<cmd>close<cr>",
+      { buffer = buf, nowait = true, silent = true, desc = "httpfly: close result window" }
+    )
   elseif not win then
     vim.cmd("vsplit")
     win = vim.api.nvim_get_current_win()
     vim.api.nvim_win_set_buf(win, buf)
+    vim.wo[win].number = false
+    vim.wo[win].relativenumber = false
   end
 
   return buf
