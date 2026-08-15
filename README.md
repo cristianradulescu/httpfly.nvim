@@ -3,6 +3,11 @@
 Send `.http` requests from Neovim using [httpyac](https://httpyac.github.io/)
 and view the response as readable markdown.
 
+![httpfly.nvim showing a request file next to the rendered response](screenshot.png)
+
+> **New here?** Check out `doc/examples/` for runnable `.http` files
+> covering everything below, from basic requests to scripting.
+
 ## Scope
 
 This plugin does **not** implement request execution, variables, or
