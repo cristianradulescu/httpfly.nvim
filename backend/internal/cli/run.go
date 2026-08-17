@@ -16,6 +16,7 @@ import (
 func runCommand(args []string, stdout io.Writer) error {
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
 	fs.SetOutput(stdout)
+	name := fs.String("name", "", "only send the request with this @name")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -34,9 +35,14 @@ func runCommand(args []string, stdout io.Writer) error {
 		return err
 	}
 
+	requests, err := selectRequests(file.Requests, *name)
+	if err != nil {
+		return fmt.Errorf("run: %w", err)
+	}
+
 	c := client.New()
 	var failed int
-	for _, req := range file.Requests {
+	for _, req := range requests {
 		result := c.Send(context.Background(), req)
 		printResult(stdout, result)
 		if result.Err != nil {
@@ -45,7 +51,7 @@ func runCommand(args []string, stdout io.Writer) error {
 	}
 
 	if failed > 0 {
-		return fmt.Errorf("run: %d of %d request(s) failed to send", failed, len(file.Requests))
+		return fmt.Errorf("run: %d of %d request(s) failed to send", failed, len(requests))
 	}
 	return nil
 }

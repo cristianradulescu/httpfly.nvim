@@ -14,6 +14,7 @@ import (
 func validateCommand(args []string, stdout io.Writer) error {
 	fs := flag.NewFlagSet("validate", flag.ContinueOnError)
 	fs.SetOutput(stdout)
+	name := fs.String("name", "", "only report on the request with this @name")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -33,12 +34,32 @@ func validateCommand(args []string, stdout io.Writer) error {
 		return err
 	}
 
+	if *name != "" {
+		result, err = filterResult(result, *name)
+		if err != nil {
+			return fmt.Errorf("validate: %w", err)
+		}
+	}
+
 	printValidationReport(stdout, path, result)
 
 	if result.HasErrors() {
 		return fmt.Errorf("validate: %s has errors", path)
 	}
 	return nil
+}
+
+// filterResult keeps only the block whose request is named name. Blocks
+// with a missing/invalid @name (an error the report should still surface)
+// never match and would otherwise vanish silently, so unmatched names
+// return an error instead of an empty report.
+func filterResult(result *parser.Result, name string) (*parser.Result, error) {
+	for _, block := range result.Blocks {
+		if block.Request.Name == name {
+			return &parser.Result{Variables: result.Variables, Blocks: []parser.BlockResult{block}}, nil
+		}
+	}
+	return nil, fmt.Errorf("no request named %q", name)
 }
 
 func printValidationReport(w io.Writer, path string, result *parser.Result) {

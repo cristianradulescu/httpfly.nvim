@@ -64,7 +64,7 @@ func TestParseNoTrailingBody(t *testing.T) {
 }
 
 func TestParseNoSeparatorSingleRequest(t *testing.T) {
-	src := "GET http://localhost:8080/get HTTP/1.1\n"
+	src := "# @name Get\nGET http://localhost:8080/get HTTP/1.1\n"
 	f, err := Parse(strings.NewReader(src))
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
@@ -75,7 +75,7 @@ func TestParseNoSeparatorSingleRequest(t *testing.T) {
 }
 
 func TestParseDefaultsProtoWhenOmitted(t *testing.T) {
-	src := "###\nGET http://localhost:8080/get\n"
+	src := "###\n# @name Get\nGET http://localhost:8080/get\n"
 	f, err := Parse(strings.NewReader(src))
 	if err != nil {
 		t.Fatalf("Parse: %v", err)

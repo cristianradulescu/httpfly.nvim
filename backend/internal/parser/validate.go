@@ -90,6 +90,7 @@ var protoPattern = regexp.MustCompile(`^HTTP/\d(\.\d)?$`)
 // after it) -- those aren't requests and produce no issues.
 func validateBlock(lines []string, vars map[string]string) (req httpfile.Request, issues []Issue, ok bool) {
 	i := 0
+	nameDeclared := false
 	for i < len(lines) {
 		line := strings.TrimSpace(lines[i])
 		if line == "" {
@@ -100,6 +101,7 @@ func validateBlock(lines []string, vars map[string]string) (req httpfile.Request
 			if key, value, isMetadata := parseMetadata(line); isMetadata {
 				issues = append(issues, validateMetadata(key, value)...)
 				if key == "name" {
+					nameDeclared = true
 					req.Name = value
 				}
 			}
@@ -115,6 +117,14 @@ func validateBlock(lines []string, vars map[string]string) (req httpfile.Request
 
 	if i >= len(lines) {
 		return httpfile.Request{}, nil, false
+	}
+
+	if !nameDeclared {
+		issues = append(issues, Issue{
+			Element:  "metadata:name",
+			Severity: SeverityError,
+			Message:  "missing required @name metadata",
+		})
 	}
 
 	line := strings.TrimSpace(lines[i])

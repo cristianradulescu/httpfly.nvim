@@ -32,6 +32,8 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "usage: httpfly <command> [arguments]")
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "commands:")
-	fmt.Fprintln(w, "  run <file.http>        send the requests in an .http file and print their responses")
-	fmt.Fprintln(w, "  validate <file.http>   report per-block validation issues in an .http file")
+	fmt.Fprintln(w, "  run [-name X] <file.http>        send the requests in an .http file and print their responses")
+	fmt.Fprintln(w, "  validate [-name X] <file.http>   report per-block validation issues in an .http file")
+	fmt.Fprintln(w, "")
+	fmt.Fprintln(w, "-name restricts either command to the single request declared with \"# @name X\".")
 }

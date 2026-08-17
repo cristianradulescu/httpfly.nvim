@@ -15,6 +15,38 @@ func findIssue(issues []Issue, element string) *Issue {
 	return nil
 }
 
+func TestAnalyzeMissingNameErrors(t *testing.T) {
+	src := "###\nGET http://localhost:8080/get HTTP/1.1\n"
+	result, err := Analyze(strings.NewReader(src))
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	issue := findIssue(result.Blocks[0].Issues, "metadata:name")
+	if issue == nil || issue.Severity != SeverityError {
+		t.Fatalf("issue = %+v, want an error for missing @name", issue)
+	}
+	if !result.HasErrors() {
+		t.Errorf("HasErrors() = false, want true")
+	}
+}
+
+func TestAnalyzeEmptyNameDoesNotAlsoErrorAsMissing(t *testing.T) {
+	src := "###\n# @name\nGET http://localhost:8080/get HTTP/1.1\n"
+	result, err := Analyze(strings.NewReader(src))
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	var nameIssues int
+	for _, issue := range result.Blocks[0].Issues {
+		if issue.Element == "metadata:name" {
+			nameIssues++
+		}
+	}
+	if nameIssues != 1 {
+		t.Errorf("got %d metadata:name issues, want exactly 1: %+v", nameIssues, result.Blocks[0].Issues)
+	}
+}
+
 func TestAnalyzeBasicExampleHasNoIssues(t *testing.T) {
 	src := "###\n# @name Get\nGET http://localhost:8080/get?greeting=hello HTTP/1.1\nAccept: application/json\n"
 	result, err := Analyze(strings.NewReader(src))

@@ -1,0 +1,54 @@
+# A grab-bag of broken/questionable requests, one issue per block, for
+# exercising `httpfly validate doc/examples/invalid.http`. Not meant to be
+# run -- most of these would fail to send anyway. See 1_basic.http and
+# 2_variables.http for well-formed examples.
+
+###
+# Missing @name -- otherwise a perfectly fine request. [ERROR]
+GET http://localhost:8080/get HTTP/1.1
+
+###
+# @name
+# Empty @name value. [ERROR]
+GET http://localhost:8080/get HTTP/1.1
+
+###
+# @name RelativeURL
+# URL has no scheme/host. [ERROR]
+GET /get HTTP/1.1
+
+###
+# @name BadHeader
+# Header line missing the ":" separator. [ERROR]
+GET http://localhost:8080/get HTTP/1.1
+X-Broken-Header
+
+###
+# @name Scripting
+# Pre-request scripting isn't implemented yet. [ERROR]
+< {%
+  request.variables.set("id", Date.now());
+%}
+
+GET http://localhost:8080/get?id={{id}} HTTP/1.1
+
+###
+# @name UnknownMetadata
+# "@timeout" is recognized syntax but isn't a supported directive. [WARN]
+# @timeout 30
+GET http://localhost:8080/get HTTP/1.1
+
+###
+# @name NonStandardMethod
+# "FETCH" isn't a real HTTP method. [WARN]
+FETCH http://localhost:8080/get HTTP/1.1
+
+###
+# @name UnrecognizedProto
+# "WEIRD/9" doesn't look like an HTTP version. [WARN]
+GET http://localhost:8080/get WEIRD/9
+
+###
+# @name UndefinedVariable
+# {{missing_var}} has no matching "@missing_var = ..." declaration. [WARN]
+GET http://localhost:8080/get?token={{missing_var}} HTTP/1.1
