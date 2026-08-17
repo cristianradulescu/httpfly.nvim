@@ -1,0 +1,21 @@
+# Basic GET and POST requests, no scripting involved.
+#
+# These hit a local httpbin instance so you can try them with zero cloud
+# dependency -- run `make httpbin-up` from the repo root first (requires
+# Docker), then `make httpbin-down` when you're done. See 2_scripting.http
+# for pre-request/post-request scripting and a login -> token -> auth chain.
+
+###
+# @name Get
+GET http://localhost:8080/get?greeting=hello HTTP/1.1
+Accept: application/json
+
+###
+# @name Post
+POST http://localhost:8080/post HTTP/1.1
+Content-Type: application/json
+
+{
+  "name": "John",
+  "greeting": "Hello"
+}
