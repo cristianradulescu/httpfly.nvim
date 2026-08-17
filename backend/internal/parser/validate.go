@@ -139,7 +139,7 @@ func validateBlock(lines []string, vars map[string]string) (req httpfile.Request
 			break
 		}
 		header, headerIssues := validateHeader(line, vars)
-		if len(headerIssues) == 0 {
+		if !hasError(headerIssues) {
 			req.Headers = append(req.Headers, header)
 		}
 		issues = append(issues, headerIssues...)
@@ -255,6 +255,15 @@ func validateHeader(line string, vars map[string]string) (httpfile.Header, []Iss
 		issues = append(issues, undefinedVariableIssue("header:"+name, varName))
 	}
 	return httpfile.Header{Name: name, Value: value}, issues
+}
+
+func hasError(issues []Issue) bool {
+	for _, issue := range issues {
+		if issue.Severity == SeverityError {
+			return true
+		}
+	}
+	return false
 }
 
 func undefinedVariableIssue(element, name string) Issue {

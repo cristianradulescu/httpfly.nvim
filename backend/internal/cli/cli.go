@@ -2,12 +2,8 @@
 package cli
 
 import (
-	"flag"
 	"fmt"
 	"io"
-	"os"
-
-	"github.com/cristianradulescu/httpfly/internal/parser"
 )
 
 // Run dispatches args to a subcommand, writing normal and error output to
@@ -36,29 +32,6 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "usage: httpfly <command> [arguments]")
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "commands:")
-	fmt.Fprintln(w, "  run <file.http>        execute the requests in an .http file")
+	fmt.Fprintln(w, "  run <file.http>        send the requests in an .http file and print their responses")
 	fmt.Fprintln(w, "  validate <file.http>   report per-block validation issues in an .http file")
-}
-
-func runCommand(args []string, stdout io.Writer) error {
-	fs := flag.NewFlagSet("run", flag.ContinueOnError)
-	fs.SetOutput(stdout)
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-	if fs.NArg() != 1 {
-		return fmt.Errorf("run: expected exactly one .http file argument")
-	}
-
-	f, err := os.Open(fs.Arg(0))
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	if _, err := parser.Parse(f); err != nil {
-		return err
-	}
-
-	return nil
 }

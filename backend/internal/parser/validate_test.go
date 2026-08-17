@@ -122,6 +122,21 @@ func TestAnalyzeResolvesFileScopedVariables(t *testing.T) {
 	}
 }
 
+func TestAnalyzeHeaderWithUndefinedVariableIsStillKept(t *testing.T) {
+	src := "###\nGET http://localhost:8080/get HTTP/1.1\nAuthorization: Bearer {{token}}\n"
+	result, err := Analyze(strings.NewReader(src))
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	headers := result.Blocks[0].Request.Headers
+	if len(headers) != 1 || headers[0].Name != "Authorization" {
+		t.Fatalf("Headers = %+v, want Authorization to still be present despite the warning", headers)
+	}
+	if want := "Bearer {{token}}"; headers[0].Value != want {
+		t.Errorf("Header value = %q, want %q", headers[0].Value, want)
+	}
+}
+
 func TestAnalyzeUndefinedVariableInHeaderAndBodyWarns(t *testing.T) {
 	src := "###\nPOST http://localhost:8080/post HTTP/1.1\nAuthorization: Bearer {{token}}\n\n{\"id\": \"{{request_id}}\"}\n"
 	result, err := Analyze(strings.NewReader(src))
