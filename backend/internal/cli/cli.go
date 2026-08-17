@@ -21,6 +21,8 @@ func Run(args []string, stdout, stderr io.Writer) error {
 	switch args[0] {
 	case "run":
 		return runCommand(args[1:], stdout)
+	case "validate":
+		return validateCommand(args[1:], stdout)
 	case "help", "-h", "--help":
 		printUsage(stdout)
 		return nil
@@ -34,7 +36,8 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "usage: httpfly <command> [arguments]")
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "commands:")
-	fmt.Fprintln(w, "  run <file.http>   execute the requests in an .http file")
+	fmt.Fprintln(w, "  run <file.http>        execute the requests in an .http file")
+	fmt.Fprintln(w, "  validate <file.http>   report per-block validation issues in an .http file")
 }
 
 func runCommand(args []string, stdout io.Writer) error {
