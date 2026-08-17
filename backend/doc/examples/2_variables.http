@@ -1,0 +1,25 @@
+# {{variable}} interpolation, resolved from the "@name = value" declarations
+# below -- these are file-scoped: declared once, usable in any request in
+# this file, in the URL, headers, or body.
+#
+# Run `make httpbin-up` first. See 1_basic.http for plain requests and
+# 3_scripting.http for pre-request/post-request scripting.
+
+@host = http://localhost:8080
+@greeting = hello
+
+###
+# @name Get
+GET {{host}}/get?greeting={{greeting}} HTTP/1.1
+Accept: application/json
+
+###
+# @name Post
+POST {{host}}/post HTTP/1.1
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "name": "John",
+  "greeting": "{{greeting}}"
+}

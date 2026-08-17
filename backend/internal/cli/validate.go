@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
+	"strings"
 
 	"github.com/cristianradulescu/httpfly/internal/parser"
 )
@@ -41,6 +43,15 @@ func validateCommand(args []string, stdout io.Writer) error {
 
 func printValidationReport(w io.Writer, path string, result *parser.Result) {
 	var errCount, warnCount int
+
+	if len(result.Variables) > 0 {
+		names := make([]string, 0, len(result.Variables))
+		for name := range result.Variables {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		fmt.Fprintf(w, "%s: %d variable(s) declared: %s\n\n", path, len(names), strings.Join(names, ", "))
+	}
 
 	for _, block := range result.Blocks {
 		label := block.Request.Name

@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"regexp"
 	"strings"
 
 	"github.com/cristianradulescu/httpfly/internal/httpfile"
@@ -33,7 +34,7 @@ func Parse(r io.Reader) (*httpfile.File, error) {
 		return nil, fmt.Errorf("parser: %s", strings.Join(msgs, "; "))
 	}
 
-	f := &httpfile.File{}
+	f := &httpfile.File{Variables: result.Variables}
 	for _, b := range result.Blocks {
 		f.Requests = append(f.Requests, b.Request)
 	}
@@ -49,10 +50,12 @@ func Analyze(r io.Reader) (*Result, error) {
 		return nil, fmt.Errorf("parser: %w", err)
 	}
 
-	result := &Result{}
+	vars := collectVariables(blocks)
+
+	result := &Result{Variables: vars}
 	index := 0
 	for _, block := range blocks {
-		req, issues, ok := validateBlock(block)
+		req, issues, ok := validateBlock(block, vars)
 		if !ok {
 			continue
 		}
@@ -62,22 +65,21 @@ func Analyze(r io.Reader) (*Result, error) {
 	return result, nil
 }
 
+// splitBlocks splits r into ###-delimited segments, including whatever
+// precedes the first separator (or the whole file, if there is none) --
+// that segment carries no request but may declare file-scoped variables.
 func splitBlocks(r io.Reader) ([][]string, error) {
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
 	var blocks [][]string
 	var current []string
-	sawSeparator := false
 
 	for scanner.Scan() {
 		line := scanner.Text()
 		if strings.TrimSpace(line) == separator {
-			if sawSeparator {
-				blocks = append(blocks, current)
-			}
+			blocks = append(blocks, current)
 			current = nil
-			sawSeparator = true
 			continue
 		}
 		current = append(current, line)
@@ -85,10 +87,7 @@ func splitBlocks(r io.Reader) ([][]string, error) {
 	if err := scanner.Err(); err != nil {
 		return nil, err
 	}
-
-	if sawSeparator || len(current) > 0 {
-		blocks = append(blocks, current)
-	}
+	blocks = append(blocks, current)
 	return blocks, nil
 }
 
@@ -105,6 +104,40 @@ func parseMetadata(line string) (key, value string, ok bool) {
 		value = strings.TrimSpace(parts[1])
 	}
 	return key, value, true
+}
+
+var variablePattern = regexp.MustCompile(`^@([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$`)
+
+// parseVariableDef recognizes "@name = value" lines (file-scoped variable
+// declarations -- unlike metadata, these aren't comments).
+func parseVariableDef(line string) (name, value string, ok bool) {
+	m := variablePattern.FindStringSubmatch(line)
+	if m == nil {
+		return "", "", false
+	}
+	return m[1], strings.TrimSpace(m[2]), true
+}
+
+// collectVariables scans the leading blank/comment/variable-declaration
+// section of every block for "@name = value" lines. Declarations anywhere in
+// the file are treated as file-scoped, in declaration order, later ones
+// overriding earlier ones with the same name.
+func collectVariables(blocks [][]string) map[string]string {
+	vars := make(map[string]string)
+	for _, lines := range blocks {
+		for _, raw := range lines {
+			line := strings.TrimSpace(raw)
+			if line == "" || strings.HasPrefix(line, "#") {
+				continue
+			}
+			name, value, ok := parseVariableDef(line)
+			if !ok {
+				break
+			}
+			vars[name] = value
+		}
+	}
+	return vars
 }
 
 // trimBody drops leading/trailing blank lines while preserving indentation

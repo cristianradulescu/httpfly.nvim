@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -85,7 +86,7 @@ func TestAnalyzeRelativeURLErrors(t *testing.T) {
 	}
 }
 
-func TestAnalyzeVariablePlaceholderWarns(t *testing.T) {
+func TestAnalyzeUndefinedVariableWarns(t *testing.T) {
 	src := "###\nGET http://localhost:8080/get?id={{request_id}} HTTP/1.1\n"
 	result, err := Analyze(strings.NewReader(src))
 	if err != nil {
@@ -94,6 +95,44 @@ func TestAnalyzeVariablePlaceholderWarns(t *testing.T) {
 	issue := findIssue(result.Blocks[0].Issues, "url")
 	if issue == nil || issue.Severity != SeverityWarning {
 		t.Fatalf("issue = %+v, want a warning", issue)
+	}
+	if got := result.Blocks[0].Request.URL; got != "http://localhost:8080/get?id={{request_id}}" {
+		t.Errorf("URL = %q, want placeholder left untouched", got)
+	}
+}
+
+func TestAnalyzeResolvesFileScopedVariables(t *testing.T) {
+	src := "@host = http://localhost:8080\n@greeting = hello\n\n###\n# @name Get\nGET {{host}}/get?greeting={{greeting}} HTTP/1.1\nAuthorization: Bearer {{host}}\n"
+	result, err := Analyze(strings.NewReader(src))
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	if result.HasErrors() {
+		t.Fatalf("HasErrors() = true, want false: %+v", result.Blocks)
+	}
+	if want, got := map[string]string{"host": "http://localhost:8080", "greeting": "hello"}, result.Variables; !reflect.DeepEqual(want, got) {
+		t.Errorf("Variables = %+v, want %+v", got, want)
+	}
+	req := result.Blocks[0].Request
+	if want := "http://localhost:8080/get?greeting=hello"; req.URL != want {
+		t.Errorf("URL = %q, want %q", req.URL, want)
+	}
+	if want := "Bearer http://localhost:8080"; req.Headers[0].Value != want {
+		t.Errorf("Header value = %q, want %q", req.Headers[0].Value, want)
+	}
+}
+
+func TestAnalyzeUndefinedVariableInHeaderAndBodyWarns(t *testing.T) {
+	src := "###\nPOST http://localhost:8080/post HTTP/1.1\nAuthorization: Bearer {{token}}\n\n{\"id\": \"{{request_id}}\"}\n"
+	result, err := Analyze(strings.NewReader(src))
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	if findIssue(result.Blocks[0].Issues, "header:Authorization") == nil {
+		t.Errorf("no issue for undefined header variable, got %+v", result.Blocks[0].Issues)
+	}
+	if findIssue(result.Blocks[0].Issues, "body") == nil {
+		t.Errorf("no issue for undefined body variable, got %+v", result.Blocks[0].Issues)
 	}
 }
 

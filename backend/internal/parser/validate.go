@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/cristianradulescu/httpfly/internal/httpfile"
+	"github.com/cristianradulescu/httpfly/internal/interpolate"
 )
 
 // Severity is how serious a validation Issue is. A Warning means the file is
@@ -57,9 +58,11 @@ func (b BlockResult) HasErrors() bool {
 }
 
 // Result is the outcome of analyzing an .http file: one BlockResult per
-// request block, in file order.
+// request block, in file order, plus the file-scoped variables collected
+// from every "@name = value" declaration.
 type Result struct {
-	Blocks []BlockResult
+	Variables map[string]string
+	Blocks    []BlockResult
 }
 
 // HasErrors reports whether any block has an error-level issue.
@@ -80,11 +83,12 @@ var standardMethods = map[string]bool{
 
 var protoPattern = regexp.MustCompile(`^HTTP/\d(\.\d)?$`)
 
-// validateBlock parses and validates one ###-delimited block. ok is false
-// for blocks that contain only comments/blank lines (e.g. the file-level
-// prelude, or a trailing separator with nothing after it) -- those aren't
-// requests and produce no issues.
-func validateBlock(lines []string) (req httpfile.Request, issues []Issue, ok bool) {
+// validateBlock parses and validates one ###-delimited block, resolving any
+// "{{var}}" placeholders in the URL, headers, and body against vars. ok is
+// false for blocks that contain only comments/blank/variable-declaration
+// lines (e.g. the file-level prelude, or a trailing separator with nothing
+// after it) -- those aren't requests and produce no issues.
+func validateBlock(lines []string, vars map[string]string) (req httpfile.Request, issues []Issue, ok bool) {
 	i := 0
 	for i < len(lines) {
 		line := strings.TrimSpace(lines[i])
@@ -99,6 +103,10 @@ func validateBlock(lines []string) (req httpfile.Request, issues []Issue, ok boo
 					req.Name = value
 				}
 			}
+			i++
+			continue
+		}
+		if _, _, isVar := parseVariableDef(line); isVar {
 			i++
 			continue
 		}
@@ -119,7 +127,7 @@ func validateBlock(lines []string) (req httpfile.Request, issues []Issue, ok boo
 		return req, issues, true
 	}
 
-	method, rawURL, proto, lineIssues := validateRequestLine(line)
+	method, rawURL, proto, lineIssues := validateRequestLine(line, vars)
 	req.Method, req.URL, req.Proto = method, rawURL, proto
 	issues = append(issues, lineIssues...)
 	i++
@@ -130,14 +138,19 @@ func validateBlock(lines []string) (req httpfile.Request, issues []Issue, ok boo
 		if line == "" {
 			break
 		}
-		header, headerIssues := validateHeader(line)
+		header, headerIssues := validateHeader(line, vars)
 		if len(headerIssues) == 0 {
 			req.Headers = append(req.Headers, header)
 		}
 		issues = append(issues, headerIssues...)
 	}
 
-	req.Body = trimBody(lines[i:])
+	body, missing := interpolate.Apply(trimBody(lines[i:]), vars)
+	req.Body = body
+	for _, name := range missing {
+		issues = append(issues, undefinedVariableIssue("body", name))
+	}
+
 	return req, issues, true
 }
 
@@ -166,8 +179,9 @@ func validateMetadata(key, value string) []Issue {
 	}
 }
 
-func validateRequestLine(line string) (method, rawURL, proto string, issues []Issue) {
+func validateRequestLine(line string, vars map[string]string) (method, resolvedURL, proto string, issues []Issue) {
 	fields := strings.Fields(line)
+	var rawURL string
 	switch len(fields) {
 	case 2:
 		method, rawURL, proto = fields[0], fields[1], "HTTP/1.1"
@@ -189,19 +203,20 @@ func validateRequestLine(line string) (method, rawURL, proto string, issues []Is
 		})
 	}
 
-	if strings.Contains(rawURL, "{{") {
-		issues = append(issues, Issue{
-			Element:  "url",
-			Severity: SeverityWarning,
-			Message:  "contains {{variable}} placeholder(s); interpolation is not yet supported",
-		})
-	} else if u, err := url.Parse(rawURL); err != nil {
+	resolvedURL, missing := interpolate.Apply(rawURL, vars)
+	for _, name := range missing {
+		issues = append(issues, undefinedVariableIssue("url", name))
+	}
+
+	if u, err := url.Parse(resolvedURL); err != nil {
 		issues = append(issues, Issue{
 			Element:  "url",
 			Severity: SeverityError,
 			Message:  fmt.Sprintf("invalid URL: %v", err),
 		})
-	} else if u.Scheme == "" || u.Host == "" {
+	} else if (u.Scheme == "" || u.Host == "") && len(missing) == 0 {
+		// A still-unresolved placeholder already explains why this doesn't
+		// look absolute; don't pile on a second issue for it.
 		issues = append(issues, Issue{
 			Element:  "url",
 			Severity: SeverityError,
@@ -217,11 +232,11 @@ func validateRequestLine(line string) (method, rawURL, proto string, issues []Is
 		})
 	}
 
-	return method, rawURL, proto, issues
+	return method, resolvedURL, proto, issues
 }
 
-func validateHeader(line string) (httpfile.Header, []Issue) {
-	name, value, found := strings.Cut(line, ":")
+func validateHeader(line string, vars map[string]string) (httpfile.Header, []Issue) {
+	name, rawValue, found := strings.Cut(line, ":")
 	if !found {
 		return httpfile.Header{}, []Issue{{
 			Element:  "header",
@@ -233,5 +248,19 @@ func validateHeader(line string) (httpfile.Header, []Issue) {
 	if name == "" {
 		return httpfile.Header{}, []Issue{{Element: "header", Severity: SeverityError, Message: "empty header name"}}
 	}
-	return httpfile.Header{Name: name, Value: strings.TrimSpace(value)}, nil
+
+	value, missing := interpolate.Apply(strings.TrimSpace(rawValue), vars)
+	var issues []Issue
+	for _, varName := range missing {
+		issues = append(issues, undefinedVariableIssue("header:"+name, varName))
+	}
+	return httpfile.Header{Name: name, Value: value}, issues
+}
+
+func undefinedVariableIssue(element, name string) Issue {
+	return Issue{
+		Element:  element,
+		Severity: SeverityWarning,
+		Message:  fmt.Sprintf("undefined variable %q", name),
+	}
 }

@@ -3,7 +3,8 @@ package httpfile
 
 // File is a sequence of requests parsed from a single .http file.
 type File struct {
-	Requests []Request
+	Variables map[string]string
+	Requests  []Request
 }
 
 // Request is one ###-delimited block: a name, a method/URL/proto line,

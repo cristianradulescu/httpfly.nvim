@@ -2,8 +2,9 @@
 #
 # These hit a local httpbin instance so you can try them with zero cloud
 # dependency -- run `make httpbin-up` from the repo root first (requires
-# Docker), then `make httpbin-down` when you're done. See 2_scripting.http
-# for pre-request/post-request scripting and a login -> token -> auth chain.
+# Docker), then `make httpbin-down` when you're done. See 2_variables.http
+# for {{variable}} interpolation, and 3_scripting.http for pre-request/
+# post-request scripting and a login -> token -> auth chain.
 
 ###
 # @name Get
