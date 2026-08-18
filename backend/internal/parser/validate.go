@@ -327,7 +327,7 @@ func validateRequestLine(line string, vars map[string]string) (method, resolvedU
 		})
 	}
 
-	resolvedURL, missing := interpolate.Apply(rawURL, vars)
+	resolvedURL, missing := interpolate.ApplyURL(rawURL, vars)
 	for _, name := range missing {
 		issues = append(issues, undefinedVariableIssue("url", name))
 	}
