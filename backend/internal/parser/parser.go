@@ -24,6 +24,11 @@ func Parse(r io.Reader) (*httpfile.File, error) {
 
 	if result.HasErrors() {
 		var msgs []string
+		for _, issue := range result.GlobalIssues {
+			if issue.Severity == SeverityError {
+				msgs = append(msgs, fmt.Sprintf("global: %s: %s", issue.Element, issue.Message))
+			}
+		}
 		for _, b := range result.Blocks {
 			for _, issue := range b.Issues {
 				if issue.Severity == SeverityError {
@@ -44,18 +49,30 @@ func Parse(r io.Reader) (*httpfile.File, error) {
 // Analyze reads r and validates every request block, collecting issues
 // instead of stopping at the first one. It only returns an error for
 // unrecoverable problems reading r.
+//
+// Content before the first "###" is the file's prelude: "key = value" lines
+// there declare global variables, and "# @key value" lines declare global
+// metadata, both defaults inherited by every request unless a block
+// re-declares them locally. A file with no "###" separator at all has no
+// prelude -- its one block is the request itself.
 func Analyze(r io.Reader) (*Result, error) {
 	blocks, err := splitBlocks(r)
 	if err != nil {
 		return nil, fmt.Errorf("parser: %w", err)
 	}
 
-	vars := collectVariables(blocks)
+	requestBlocks := blocks
+	var preludeLines []string
+	if len(blocks) > 1 {
+		preludeLines, requestBlocks = blocks[0], blocks[1:]
+	}
 
-	result := &Result{Variables: vars}
+	globalVars, globalMetadata, globalIssues := parsePrelude(preludeLines)
+
+	result := &Result{Variables: globalVars, GlobalIssues: globalIssues}
 	index := 0
-	for _, block := range blocks {
-		req, issues, ok := validateBlock(block, vars)
+	for _, block := range requestBlocks {
+		req, issues, ok := validateBlock(block, globalVars, globalMetadata)
 		if !ok {
 			continue
 		}
@@ -66,8 +83,7 @@ func Analyze(r io.Reader) (*Result, error) {
 }
 
 // splitBlocks splits r into ###-delimited segments, including whatever
-// precedes the first separator (or the whole file, if there is none) --
-// that segment carries no request but may declare file-scoped variables.
+// precedes the first separator (or the whole file, if there is none).
 func splitBlocks(r io.Reader) ([][]string, error) {
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
@@ -106,38 +122,17 @@ func parseMetadata(line string) (key, value string, ok bool) {
 	return key, value, true
 }
 
-var variablePattern = regexp.MustCompile(`^@([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$`)
+var variablePattern = regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$`)
 
-// parseVariableDef recognizes "@name = value" lines (file-scoped variable
-// declarations -- unlike metadata, these aren't comments).
+// parseVariableDef recognizes "key = value" lines (env-file style variable
+// declarations). The "@" prefix is reserved for metadata, so these aren't
+// prefixed at all.
 func parseVariableDef(line string) (name, value string, ok bool) {
 	m := variablePattern.FindStringSubmatch(line)
 	if m == nil {
 		return "", "", false
 	}
 	return m[1], strings.TrimSpace(m[2]), true
-}
-
-// collectVariables scans the leading blank/comment/variable-declaration
-// section of every block for "@name = value" lines. Declarations anywhere in
-// the file are treated as file-scoped, in declaration order, later ones
-// overriding earlier ones with the same name.
-func collectVariables(blocks [][]string) map[string]string {
-	vars := make(map[string]string)
-	for _, lines := range blocks {
-		for _, raw := range lines {
-			line := strings.TrimSpace(raw)
-			if line == "" || strings.HasPrefix(line, "#") {
-				continue
-			}
-			name, value, ok := parseVariableDef(line)
-			if !ok {
-				break
-			}
-			vars[name] = value
-		}
-	}
-	return vars
 }
 
 // trimBody drops leading/trailing blank lines while preserving indentation

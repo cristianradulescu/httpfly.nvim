@@ -1,12 +1,14 @@
-# {{variable}} interpolation, resolved from the "@name = value" declarations
-# below -- these are file-scoped: declared once, usable in any request in
-# this file, in the URL, headers, or body.
+# {{variable}} interpolation, resolved from the "key = value" declarations
+# below -- these are global: declared once in the prelude (before the first
+# "###"), inherited by every request in this file, in the URL, headers, or
+# body. A request can also declare its own local variable of the same name
+# to override the global value just for that one request.
 #
 # Run `make httpbin-up` first. See 1_basic.http for plain requests and
 # 3_scripting.http for pre-request/post-request scripting.
 
-@host = http://localhost:8080
-@greeting = hello
+host = http://localhost:8080
+greeting = hello
 
 ###
 # @name Get

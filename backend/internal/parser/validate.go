@@ -49,24 +49,24 @@ type BlockResult struct {
 
 // HasErrors reports whether any issue in the block is an error.
 func (b BlockResult) HasErrors() bool {
-	for _, issue := range b.Issues {
-		if issue.Severity == SeverityError {
-			return true
-		}
-	}
-	return false
+	return hasError(b.Issues)
 }
 
-// Result is the outcome of analyzing an .http file: one BlockResult per
-// request block, in file order, plus the file-scoped variables collected
-// from every "@name = value" declaration.
+// Result is the outcome of analyzing an .http file: the global variables and
+// metadata declared in the prelude (before the first "###"), any issues
+// found there, and one BlockResult per request block, in file order.
 type Result struct {
-	Variables map[string]string
-	Blocks    []BlockResult
+	Variables    map[string]string
+	GlobalIssues []Issue
+	Blocks       []BlockResult
 }
 
-// HasErrors reports whether any block has an error-level issue.
+// HasErrors reports whether the prelude or any block has an error-level
+// issue.
 func (r Result) HasErrors() bool {
+	if hasError(r.GlobalIssues) {
+		return true
+	}
 	for _, b := range r.Blocks {
 		if b.HasErrors() {
 			return true
@@ -83,14 +83,84 @@ var standardMethods = map[string]bool{
 
 var protoPattern = regexp.MustCompile(`^HTTP/\d(\.\d)?$`)
 
-// validateBlock parses and validates one ###-delimited block, resolving any
-// "{{var}}" placeholders in the URL, headers, and body against vars. ok is
-// false for blocks that contain only comments/blank/variable-declaration
-// lines (e.g. the file-level prelude, or a trailing separator with nothing
-// after it) -- those aren't requests and produce no issues.
-func validateBlock(lines []string, vars map[string]string) (req httpfile.Request, issues []Issue, ok bool) {
+// metadataScope is where a "# @key value" line was found.
+type metadataScope int
+
+const (
+	scopeGlobal metadataScope = iota
+	scopeLocal
+)
+
+func (s metadataScope) String() string {
+	if s == scopeGlobal {
+		return "global"
+	}
+	return "per-request"
+}
+
+// localOnlyMetadata are known keys that only make sense attached to one
+// specific request, never as a file-wide default.
+var localOnlyMetadata = map[string]bool{
+	"name": true, // the per-request identifier -- there's no sensible "global name"
+	"lang": true, // names the language of *this* block's inline script
+}
+
+// knownMetadataKeys are the keys validateMetadata gives special handling to.
+// Anything else is "unknown metadata" regardless of scope, so scope isn't
+// enforced for it beyond that existing warning.
+var knownMetadataKeys = map[string]bool{"name": true, "lang": true, "proxy": true}
+
+// parsePrelude parses the file segment before the first "###": "key = value"
+// lines become global variables, "# @key value" lines become global
+// metadata (subject to the same scope rules as per-request metadata), and
+// anything else is very likely a mistake (e.g. a request missing its
+// leading "###") so it's reported rather than silently dropped.
+func parsePrelude(lines []string) (vars map[string]string, metadata map[string]string, issues []Issue) {
+	vars = make(map[string]string)
+	metadata = make(map[string]string)
+
+	for _, raw := range lines {
+		line := strings.TrimSpace(raw)
+		switch {
+		case line == "":
+			continue
+		case strings.HasPrefix(line, "#"):
+			key, value, isMetadata := parseMetadata(line)
+			if !isMetadata {
+				continue
+			}
+			scopeIssues := validateMetadataInScope(key, value, scopeGlobal)
+			issues = append(issues, scopeIssues...)
+			if !hasError(scopeIssues) {
+				metadata[key] = value
+			}
+		default:
+			if name, value, isVar := parseVariableDef(line); isVar {
+				vars[name] = value
+				continue
+			}
+			issues = append(issues, Issue{
+				Element:  "global",
+				Severity: SeverityWarning,
+				Message:  fmt.Sprintf("ignored: content before the first \"###\" separator: %q", line),
+			})
+		}
+	}
+	return vars, metadata, issues
+}
+
+// validateBlock parses and validates one ###-delimited block, merging its
+// local variables/metadata over the file's global defaults (local wins) and
+// resolving any "{{var}}" placeholders in the URL, headers, body, and proxy
+// against the merged variables. ok is false for blocks that contain only
+// comments/blank/variable-declaration lines -- those aren't requests and
+// produce no issues.
+func validateBlock(lines []string, globalVars, globalMetadata map[string]string) (req httpfile.Request, issues []Issue, ok bool) {
 	i := 0
 	nameDeclared := false
+	localVars := make(map[string]string)
+	localMetadata := make(map[string]string)
+
 	for i < len(lines) {
 		line := strings.TrimSpace(lines[i])
 		if line == "" {
@@ -99,16 +169,19 @@ func validateBlock(lines []string, vars map[string]string) (req httpfile.Request
 		}
 		if strings.HasPrefix(line, "#") {
 			if key, value, isMetadata := parseMetadata(line); isMetadata {
-				issues = append(issues, validateMetadata(key, value)...)
+				issues = append(issues, validateMetadataInScope(key, value, scopeLocal)...)
 				if key == "name" {
 					nameDeclared = true
 					req.Name = value
+				} else {
+					localMetadata[key] = value
 				}
 			}
 			i++
 			continue
 		}
-		if _, _, isVar := parseVariableDef(line); isVar {
+		if name, value, isVar := parseVariableDef(line); isVar {
+			localVars[name] = value
 			i++
 			continue
 		}
@@ -126,6 +199,8 @@ func validateBlock(lines []string, vars map[string]string) (req httpfile.Request
 			Message:  "missing required @name metadata",
 		})
 	}
+
+	vars := mergeVars(globalVars, localVars)
 
 	line := strings.TrimSpace(lines[i])
 	if strings.HasPrefix(line, "<") || strings.HasPrefix(line, ">") {
@@ -155,6 +230,14 @@ func validateBlock(lines []string, vars map[string]string) (req httpfile.Request
 		issues = append(issues, headerIssues...)
 	}
 
+	rawProxy := localMetadata["proxy"]
+	if rawProxy == "" {
+		rawProxy = globalMetadata["proxy"]
+	}
+	resolvedProxy, proxyIssues := resolveProxy(rawProxy, vars)
+	req.Proxy = resolvedProxy
+	issues = append(issues, proxyIssues...)
+
 	body, missing := interpolate.Apply(trimBody(lines[i:]), vars)
 	req.Body = body
 	for _, name := range missing {
@@ -162,6 +245,32 @@ func validateBlock(lines []string, vars map[string]string) (req httpfile.Request
 	}
 
 	return req, issues, true
+}
+
+func mergeVars(global, local map[string]string) map[string]string {
+	merged := make(map[string]string, len(global)+len(local))
+	for k, v := range global {
+		merged[k] = v
+	}
+	for k, v := range local {
+		merged[k] = v
+	}
+	return merged
+}
+
+// validateMetadataInScope runs the usual per-key checks and, for keys with
+// a restricted scope (currently just the local-only ones), also flags the
+// line if it showed up somewhere that key isn't allowed.
+func validateMetadataInScope(key, value string, scope metadataScope) []Issue {
+	issues := validateMetadata(key, value)
+	if knownMetadataKeys[key] && scope == scopeGlobal && localOnlyMetadata[key] {
+		issues = append(issues, Issue{
+			Element:  "metadata:" + key,
+			Severity: SeverityError,
+			Message:  fmt.Sprintf("\"@%s\" is not allowed as global metadata (per-request only)", key),
+		})
+	}
+	return issues
 }
 
 func validateMetadata(key, value string) []Issue {
@@ -180,6 +289,11 @@ func validateMetadata(key, value string) []Issue {
 			Severity: SeverityWarning,
 			Message:  "recognized but not yet supported (pre/post-request scripting is unimplemented)",
 		}}
+	case "proxy":
+		if value == "" {
+			return []Issue{{Element: "metadata:proxy", Severity: SeverityError, Message: "@proxy requires a value"}}
+		}
+		return nil
 	default:
 		return []Issue{{
 			Element:  "metadata:" + key,
@@ -265,6 +379,37 @@ func validateHeader(line string, vars map[string]string) (httpfile.Header, []Iss
 		issues = append(issues, undefinedVariableIssue("header:"+name, varName))
 	}
 	return httpfile.Header{Name: name, Value: value}, issues
+}
+
+// resolveProxy interpolates and validates an effective "@proxy" value. An
+// empty rawProxy (no proxy declared, locally or globally) is not an issue --
+// it just means the request connects directly.
+func resolveProxy(rawProxy string, vars map[string]string) (string, []Issue) {
+	if rawProxy == "" {
+		return "", nil
+	}
+
+	resolved, missing := interpolate.Apply(rawProxy, vars)
+	var issues []Issue
+	for _, name := range missing {
+		issues = append(issues, undefinedVariableIssue("metadata:proxy", name))
+	}
+
+	if u, err := url.Parse(resolved); err != nil {
+		issues = append(issues, Issue{
+			Element:  "metadata:proxy",
+			Severity: SeverityError,
+			Message:  fmt.Sprintf("invalid proxy URL: %v", err),
+		})
+	} else if (u.Scheme == "" || u.Host == "") && len(missing) == 0 {
+		issues = append(issues, Issue{
+			Element:  "metadata:proxy",
+			Severity: SeverityError,
+			Message:  "proxy URL must be absolute (missing scheme or host)",
+		})
+	}
+
+	return resolved, issues
 }
 
 func hasError(issues []Issue) bool {

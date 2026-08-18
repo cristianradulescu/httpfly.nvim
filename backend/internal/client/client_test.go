@@ -79,3 +79,41 @@ func TestSendConnectionError(t *testing.T) {
 		t.Fatal("expected a connection error, got nil")
 	}
 }
+
+func TestSendThroughProxy(t *testing.T) {
+	var proxied bool
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		proxied = true
+		// A forward proxy receives the absolute-URI request line unmodified.
+		if !r.URL.IsAbs() {
+			t.Errorf("request URL = %q, want an absolute URI (proxy semantics)", r.URL)
+		}
+		w.WriteHeader(http.StatusTeapot)
+	}))
+	defer proxy.Close()
+
+	req := httpfile.Request{
+		Method: "GET",
+		URL:    "http://example.invalid/get",
+		Proxy:  proxy.URL,
+	}
+
+	result := New().Send(context.Background(), req)
+	if result.Err != nil {
+		t.Fatalf("Send: %v", result.Err)
+	}
+	if !proxied {
+		t.Fatal("request never reached the proxy")
+	}
+	if result.StatusCode != http.StatusTeapot {
+		t.Errorf("StatusCode = %d, want 418 (from the proxy, not example.invalid)", result.StatusCode)
+	}
+}
+
+func TestSendInvalidProxyURL(t *testing.T) {
+	req := httpfile.Request{Method: "GET", URL: "http://example.invalid/get", Proxy: "://not a url"}
+	result := New().Send(context.Background(), req)
+	if result.Err == nil {
+		t.Fatal("expected an error for an invalid proxy URL")
+	}
+}

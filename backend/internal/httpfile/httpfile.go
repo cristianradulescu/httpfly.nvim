@@ -16,6 +16,9 @@ type Request struct {
 	Proto   string
 	Headers []Header
 	Body    string
+	// Proxy is the absolute URL of an HTTP proxy to send this request
+	// through, or "" to connect directly.
+	Proxy string
 }
 
 // Header is a single "Name: Value" line.

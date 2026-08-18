@@ -134,7 +134,7 @@ func TestAnalyzeUndefinedVariableWarns(t *testing.T) {
 }
 
 func TestAnalyzeResolvesFileScopedVariables(t *testing.T) {
-	src := "@host = http://localhost:8080\n@greeting = hello\n\n###\n# @name Get\nGET {{host}}/get?greeting={{greeting}} HTTP/1.1\nAuthorization: Bearer {{host}}\n"
+	src := "host = http://localhost:8080\ngreeting = hello\n\n###\n# @name Get\nGET {{host}}/get?greeting={{greeting}} HTTP/1.1\nAuthorization: Bearer {{host}}\n"
 	result, err := Analyze(strings.NewReader(src))
 	if err != nil {
 		t.Fatalf("Analyze: %v", err)
@@ -203,6 +203,87 @@ func TestAnalyzeScriptingBlockErrors(t *testing.T) {
 	}
 	if !result.HasErrors() {
 		t.Fatalf("HasErrors() = false, want true, blocks: %+v", result.Blocks)
+	}
+}
+
+func TestAnalyzeLocalVariableOverridesGlobalWithoutBleeding(t *testing.T) {
+	src := "env = prod\n\n" +
+		"###\n# @name UsesLocal\nenv = dev\nGET http://localhost:8080/get?env={{env}} HTTP/1.1\n\n" +
+		"###\n# @name UsesGlobal\nGET http://localhost:8080/get?env={{env}} HTTP/1.1\n"
+	result, err := Analyze(strings.NewReader(src))
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	if result.HasErrors() {
+		t.Fatalf("HasErrors() = true, want false: %+v", result.Blocks)
+	}
+	if want, got := "http://localhost:8080/get?env=dev", result.Blocks[0].Request.URL; got != want {
+		t.Errorf("block 0 URL = %q, want %q (local override)", got, want)
+	}
+	if want, got := "http://localhost:8080/get?env=prod", result.Blocks[1].Request.URL; got != want {
+		t.Errorf("block 1 URL = %q, want %q (global value, not the other block's local)", got, want)
+	}
+}
+
+func TestAnalyzeNameNotAllowedAsGlobalMetadata(t *testing.T) {
+	src := "# @name GlobalName\n\n###\n# @name Real\nGET http://localhost:8080/get HTTP/1.1\n"
+	result, err := Analyze(strings.NewReader(src))
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	issue := findIssue(result.GlobalIssues, "metadata:name")
+	if issue == nil || issue.Severity != SeverityError {
+		t.Fatalf("GlobalIssues = %+v, want an error for @name in the prelude", result.GlobalIssues)
+	}
+	if !result.HasErrors() {
+		t.Errorf("HasErrors() = false, want true")
+	}
+	// The real per-request block should be unaffected by the prelude error.
+	if result.Blocks[0].HasErrors() {
+		t.Errorf("Blocks[0].Issues = %+v, want none", result.Blocks[0].Issues)
+	}
+}
+
+func TestAnalyzeGlobalProxyAppliesToEveryRequestUnlessOverridden(t *testing.T) {
+	src := "# @proxy http://global-proxy:8888\n\n" +
+		"###\n# @name Default\nGET http://localhost:8080/get HTTP/1.1\n\n" +
+		"###\n# @name Overridden\n# @proxy http://local-proxy:9999\nGET http://localhost:8080/get HTTP/1.1\n"
+	result, err := Analyze(strings.NewReader(src))
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	if result.HasErrors() {
+		t.Fatalf("HasErrors() = true, want false: global=%+v blocks=%+v", result.GlobalIssues, result.Blocks)
+	}
+	if want, got := "http://global-proxy:8888", result.Blocks[0].Request.Proxy; got != want {
+		t.Errorf("Default proxy = %q, want %q", got, want)
+	}
+	if want, got := "http://local-proxy:9999", result.Blocks[1].Request.Proxy; got != want {
+		t.Errorf("Overridden proxy = %q, want %q", got, want)
+	}
+}
+
+func TestAnalyzeInvalidProxyErrors(t *testing.T) {
+	src := "###\n# @name Get\n# @proxy localhost:3128\nGET http://localhost:8080/get HTTP/1.1\n"
+	result, err := Analyze(strings.NewReader(src))
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	issue := findIssue(result.Blocks[0].Issues, "metadata:proxy")
+	if issue == nil || issue.Severity != SeverityError {
+		t.Fatalf("issue = %+v, want an error for a proxy URL missing scheme/host", issue)
+	}
+}
+
+func TestAnalyzePreludeStrayContentWarns(t *testing.T) {
+	src := "this is not a variable or metadata line\n\n###\n# @name Get\nGET http://localhost:8080/get HTTP/1.1\n"
+	result, err := Analyze(strings.NewReader(src))
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	issue := findIssue(result.GlobalIssues, "global")
+	if issue == nil || issue.Severity != SeverityWarning {
+		t.Fatalf("GlobalIssues = %+v, want a warning for stray prelude content", result.GlobalIssues)
 	}
 }
 

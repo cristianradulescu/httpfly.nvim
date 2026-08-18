@@ -2,6 +2,11 @@
 # exercising `httpfly validate doc/examples/invalid.http`. Not meant to be
 # run -- most of these would fail to send anyway. See 1_basic.http and
 # 2_variables.http for well-formed examples.
+#
+# "name" is local-only metadata (a global name makes no sense), so the line
+# below is itself an [ERROR], reported under a "(global)" section rather
+# than attached to any one request.
+# @name NotAllowedGlobally
 
 ###
 # Missing @name -- otherwise a perfectly fine request. [ERROR]
@@ -50,5 +55,11 @@ GET http://localhost:8080/get WEIRD/9
 
 ###
 # @name UndefinedVariable
-# {{missing_var}} has no matching "@missing_var = ..." declaration. [WARN]
+# {{missing_var}} has no matching "missing_var = ..." declaration. [WARN]
 GET http://localhost:8080/get?token={{missing_var}} HTTP/1.1
+
+###
+# @name BadProxy
+# @proxy is metadata, so it needs a scheme+host like any other URL. [ERROR]
+# @proxy localhost:3128
+GET http://localhost:8080/get HTTP/1.1

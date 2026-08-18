@@ -56,7 +56,11 @@ func validateCommand(args []string, stdout io.Writer) error {
 func filterResult(result *parser.Result, name string) (*parser.Result, error) {
 	for _, block := range result.Blocks {
 		if block.Request.Name == name {
-			return &parser.Result{Variables: result.Variables, Blocks: []parser.BlockResult{block}}, nil
+			return &parser.Result{
+				Variables:    result.Variables,
+				GlobalIssues: result.GlobalIssues,
+				Blocks:       []parser.BlockResult{block},
+			}, nil
 		}
 	}
 	return nil, fmt.Errorf("no request named %q", name)
@@ -71,7 +75,20 @@ func printValidationReport(w io.Writer, path string, result *parser.Result) {
 			names = append(names, name)
 		}
 		sort.Strings(names)
-		fmt.Fprintf(w, "%s: %d variable(s) declared: %s\n\n", path, len(names), strings.Join(names, ", "))
+		fmt.Fprintf(w, "%s: %d global variable(s) declared: %s\n\n", path, len(names), strings.Join(names, ", "))
+	}
+
+	if len(result.GlobalIssues) > 0 {
+		fmt.Fprintf(w, "%s (global):\n", path)
+		for _, issue := range result.GlobalIssues {
+			fmt.Fprintf(w, "  [%s] %s: %s\n", issue.Severity, issue.Element, issue.Message)
+			switch issue.Severity {
+			case parser.SeverityError:
+				errCount++
+			case parser.SeverityWarning:
+				warnCount++
+			}
+		}
 	}
 
 	for _, block := range result.Blocks {
