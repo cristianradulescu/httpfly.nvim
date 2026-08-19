@@ -117,3 +117,80 @@ func TestSendInvalidProxyURL(t *testing.T) {
 		t.Fatal("expected an error for an invalid proxy URL")
 	}
 }
+
+func TestSendFollowsRedirectAndReportsFinalURL(t *testing.T) {
+	var targetURL string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/start", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, targetURL, http.StatusFound)
+	})
+	mux.HandleFunc("/end", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	targetURL = srv.URL + "/end"
+
+	req := httpfile.Request{Method: "GET", URL: srv.URL + "/start"}
+	result := New().Send(context.Background(), req)
+	if result.Err != nil {
+		t.Fatalf("Send: %v", result.Err)
+	}
+	if result.StatusCode != http.StatusOK {
+		t.Errorf("StatusCode = %d, want 200 (from the redirect target)", result.StatusCode)
+	}
+	if result.FinalURL != targetURL {
+		t.Errorf("FinalURL = %q, want %q", result.FinalURL, targetURL)
+	}
+}
+
+func TestSendNoRedirectFinalURLMatchesRequest(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	req := httpfile.Request{Method: "GET", URL: srv.URL + "/get"}
+	result := New().Send(context.Background(), req)
+	if result.Err != nil {
+		t.Fatalf("Send: %v", result.Err)
+	}
+	if result.FinalURL != req.URL {
+		t.Errorf("FinalURL = %q, want %q (no redirect)", result.FinalURL, req.URL)
+	}
+}
+
+func TestSendPlainHTTPHasNoTLSState(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	req := httpfile.Request{Method: "GET", URL: srv.URL + "/get"}
+	result := New().Send(context.Background(), req)
+	if result.Err != nil {
+		t.Fatalf("Send: %v", result.Err)
+	}
+	if result.TLS != nil {
+		t.Errorf("TLS = %+v, want nil for a plain HTTP request", result.TLS)
+	}
+}
+
+func TestSendHTTPSCapturesTLSState(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := New()
+	c.HTTP = srv.Client() // trust the test server's self-signed cert
+
+	req := httpfile.Request{Method: "GET", URL: srv.URL + "/get"}
+	result := c.Send(context.Background(), req)
+	if result.Err != nil {
+		t.Fatalf("Send: %v", result.Err)
+	}
+	if result.TLS == nil {
+		t.Fatal("TLS = nil, want a populated ConnectionState for an HTTPS request")
+	}
+}

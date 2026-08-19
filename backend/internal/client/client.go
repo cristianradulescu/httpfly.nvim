@@ -3,6 +3,7 @@ package client
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"net/http"
@@ -28,6 +29,11 @@ type Result struct {
 	Body       []byte
 	Duration   time.Duration
 	Err        error
+	// FinalURL is the URL the response actually came from, after following
+	// any redirects. It equals Request.URL when there were none.
+	FinalURL string
+	// TLS is the connection's TLS state, or nil for a plain HTTP request.
+	TLS *tls.ConnectionState
 }
 
 // Client sends httpfile.Request values over HTTP.
@@ -81,6 +87,11 @@ func (c *Client) Send(ctx context.Context, req httpfile.Request) Result {
 		return Result{Request: req, Duration: duration, Err: err}
 	}
 
+	finalURL := req.URL
+	if resp.Request != nil && resp.Request.URL != nil {
+		finalURL = resp.Request.URL.String()
+	}
+
 	return Result{
 		Request:    req,
 		StatusCode: resp.StatusCode,
@@ -88,6 +99,8 @@ func (c *Client) Send(ctx context.Context, req httpfile.Request) Result {
 		Headers:    resp.Header,
 		Body:       respBody,
 		Duration:   duration,
+		FinalURL:   finalURL,
+		TLS:        resp.TLS,
 	}
 }
 
