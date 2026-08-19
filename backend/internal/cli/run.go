@@ -17,6 +17,9 @@ func runCommand(args []string, stdout io.Writer) error {
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
 	fs.SetOutput(stdout)
 	name := fs.String("name", "", "only send the request with this @name")
+	var silent bool
+	fs.BoolVar(&silent, "silent", false, "print only response bodies, nothing else (like curl -s)")
+	fs.BoolVar(&silent, "s", false, "shorthand for -silent")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -44,7 +47,13 @@ func runCommand(args []string, stdout io.Writer) error {
 	var failed int
 	for _, req := range requests {
 		result := c.Send(context.Background(), req)
-		printResult(stdout, result)
+		if silent {
+			if result.Err == nil {
+				stdout.Write(result.Body)
+			}
+		} else {
+			printResult(stdout, result)
+		}
 		if result.Err != nil {
 			failed++
 		}
