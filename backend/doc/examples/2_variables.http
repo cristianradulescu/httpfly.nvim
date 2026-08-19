@@ -6,6 +6,14 @@
 #
 # Run `make httpbin-up` first. See 1_basic.http for plain requests and
 # 3_scripting.http for pre-request/post-request scripting.
+#
+# `host` here is also a good candidate for an environment override -- try
+# `httpfly run -env dev-alt-port 2_variables.http` against httpfly.env.json
+# in this directory (it points at a port nothing's listening on, so you'll
+# see a connection error instead of a response, which is the point: the
+# environment's value won the override over this file's own default).
+# httpfly.env.json also declares a "shared" greeting, inherited by both
+# "dev" and "dev-alt-port" since neither environment overrides it itself.
 
 host = http://localhost:8080
 greeting = hello

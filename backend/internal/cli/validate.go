@@ -15,6 +15,7 @@ func validateCommand(args []string, stdout io.Writer) error {
 	fs := flag.NewFlagSet("validate", flag.ContinueOnError)
 	fs.SetOutput(stdout)
 	name := fs.String("name", "", "only report on the request with this @name")
+	envName := fs.String("env", "", "apply variables from the named environment in httpfly.env.json")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -23,13 +24,18 @@ func validateCommand(args []string, stdout io.Writer) error {
 	}
 	path := fs.Arg(0)
 
+	envVars, err := resolveEnvVars(path, *envName)
+	if err != nil {
+		return fmt.Errorf("validate: %w", err)
+	}
+
 	f, err := os.Open(path)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
 
-	result, err := parser.Analyze(f)
+	result, err := parser.AnalyzeWithEnv(f, envVars)
 	if err != nil {
 		return err
 	}

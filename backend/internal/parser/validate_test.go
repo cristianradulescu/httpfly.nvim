@@ -297,3 +297,54 @@ func TestParseSurfacesAggregatedErrors(t *testing.T) {
 		t.Errorf("error %q should mention both requests", err.Error())
 	}
 }
+
+func TestAnalyzeWithEnvPrecedence(t *testing.T) {
+	// host: file-global default, overridden by the environment.
+	// greeting: only in the environment.
+	// path: only local to the block, overriding nothing.
+	src := "host = http://localhost:8080\n\n" +
+		"###\n# @name Get\npath = get\nGET {{host}}/{{path}}?greeting={{greeting}} HTTP/1.1\n"
+	envVars := map[string]string{"host": "https://api.example.com", "greeting": "hi"}
+
+	result, err := AnalyzeWithEnv(strings.NewReader(src), envVars)
+	if err != nil {
+		t.Fatalf("AnalyzeWithEnv: %v", err)
+	}
+	if result.HasErrors() {
+		t.Fatalf("HasErrors() = true, want false: %+v", result.Blocks)
+	}
+	if want, got := "https://api.example.com/get?greeting=hi", result.Blocks[0].Request.URL; got != want {
+		t.Errorf("URL = %q, want %q", got, want)
+	}
+	if want, got := map[string]string{"host": "https://api.example.com", "greeting": "hi"}, result.Variables; !reflect.DeepEqual(want, got) {
+		t.Errorf("Variables = %+v, want %+v", got, want)
+	}
+}
+
+func TestAnalyzeWithEnvLocalVariableStillWinsOverEnv(t *testing.T) {
+	src := "###\n# @name Get\nhost = http://local-override\nGET {{host}}/get HTTP/1.1\n"
+	envVars := map[string]string{"host": "https://api.example.com"}
+
+	result, err := AnalyzeWithEnv(strings.NewReader(src), envVars)
+	if err != nil {
+		t.Fatalf("AnalyzeWithEnv: %v", err)
+	}
+	if want, got := "http://local-override/get", result.Blocks[0].Request.URL; got != want {
+		t.Errorf("URL = %q, want %q (local should win over environment)", got, want)
+	}
+}
+
+func TestAnalyzeNilEnvVarsMatchesAnalyze(t *testing.T) {
+	src := "###\n# @name Get\nGET http://localhost:8080/get HTTP/1.1\n"
+	withEnv, err := AnalyzeWithEnv(strings.NewReader(src), nil)
+	if err != nil {
+		t.Fatalf("AnalyzeWithEnv: %v", err)
+	}
+	without, err := Analyze(strings.NewReader(src))
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	if !reflect.DeepEqual(withEnv, without) {
+		t.Errorf("AnalyzeWithEnv(nil) = %+v, want %+v", withEnv, without)
+	}
+}

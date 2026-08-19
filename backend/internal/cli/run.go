@@ -25,6 +25,7 @@ func runCommand(args []string, stdout io.Writer) error {
 	var verbose bool
 	fs.BoolVar(&verbose, "verbose", false, "also print TLS connection details (version, cipher, peer certificate)")
 	fs.BoolVar(&verbose, "v", false, "shorthand for -verbose")
+	envName := fs.String("env", "", "apply variables from the named environment in httpfly.env.json")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -34,14 +35,20 @@ func runCommand(args []string, stdout io.Writer) error {
 	if silent && *jsonOutput {
 		return fmt.Errorf("run: -silent and -json are mutually exclusive")
 	}
+	path := fs.Arg(0)
 
-	f, err := os.Open(fs.Arg(0))
+	envVars, err := resolveEnvVars(path, *envName)
+	if err != nil {
+		return fmt.Errorf("run: %w", err)
+	}
+
+	f, err := os.Open(path)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
 
-	file, err := parser.Parse(f)
+	file, err := parser.ParseWithEnv(f, envVars)
 	if err != nil {
 		return err
 	}

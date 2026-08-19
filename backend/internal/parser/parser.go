@@ -17,7 +17,15 @@ const separator = "###"
 // every validation error found (see Analyze for a report that also includes
 // warnings and succeeds despite errors).
 func Parse(r io.Reader) (*httpfile.File, error) {
-	result, err := Analyze(r)
+	return ParseWithEnv(r, nil)
+}
+
+// ParseWithEnv is like Parse, but merges envVars in as an extra layer of
+// global variables: file-declared globals are the default, envVars
+// overrides them, and a request's own local variables win over both. Pass
+// a nil or empty envVars to get Parse's behavior.
+func ParseWithEnv(r io.Reader, envVars map[string]string) (*httpfile.File, error) {
+	result, err := AnalyzeWithEnv(r, envVars)
 	if err != nil {
 		return nil, err
 	}
@@ -56,6 +64,14 @@ func Parse(r io.Reader) (*httpfile.File, error) {
 // re-declares them locally. A file with no "###" separator at all has no
 // prelude -- its one block is the request itself.
 func Analyze(r io.Reader) (*Result, error) {
+	return AnalyzeWithEnv(r, nil)
+}
+
+// AnalyzeWithEnv is like Analyze, but merges envVars in as an extra layer of
+// global variables between the file's own globals and each request's local
+// variables (see ParseWithEnv for the precedence). Pass a nil or empty
+// envVars to get Analyze's behavior.
+func AnalyzeWithEnv(r io.Reader, envVars map[string]string) (*Result, error) {
 	blocks, err := splitBlocks(r)
 	if err != nil {
 		return nil, fmt.Errorf("parser: %w", err)
@@ -67,7 +83,8 @@ func Analyze(r io.Reader) (*Result, error) {
 		preludeLines, requestBlocks = blocks[0], blocks[1:]
 	}
 
-	globalVars, globalMetadata, globalIssues := parsePrelude(preludeLines)
+	preludeVars, globalMetadata, globalIssues := parsePrelude(preludeLines)
+	globalVars := mergeVars(preludeVars, envVars)
 
 	result := &Result{Variables: globalVars, GlobalIssues: globalIssues}
 	index := 0
