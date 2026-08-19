@@ -2,11 +2,14 @@ HTTPBIN_IMAGE := kennethreitz/httpbin
 HTTPBIN_NAME  := httpfly-httpbin
 HTTPBIN_PORT  ?= 8080
 
+VERSION     := $(shell cat VERSION)
+VERSION_PKG := github.com/cristianradulescu/httpfly/internal/cli
+
 .PHONY: build test fmt vet lint check httpbin-up httpbin-down httpbin-logs
 
 ## Build the httpfly binary into ./bin.
 build:
-	go build -o bin/httpfly ./cmd/httpfly
+	go build -ldflags "-X $(VERSION_PKG).Version=$(VERSION)" -o bin/httpfly ./cmd/httpfly
 
 ## Run the test suite.
 test:

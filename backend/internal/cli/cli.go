@@ -19,6 +19,9 @@ func Run(args []string, stdout, stderr io.Writer) error {
 		return runCommand(args[1:], stdout)
 	case "validate":
 		return validateCommand(args[1:], stdout)
+	case "version", "-version", "--version":
+		fmt.Fprintf(stdout, "httpfly %s\n", Version)
+		return nil
 	case "help", "-h", "--help":
 		printUsage(stdout)
 		return nil
@@ -34,6 +37,7 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "commands:")
 	fmt.Fprintln(w, "  run [-name X] [-env E] [-s | -json] [-v] <file.http>   send the requests in an .http file and print their responses")
 	fmt.Fprintln(w, "  validate [-name X] [-env E] <file.http>                report per-block validation issues in an .http file")
+	fmt.Fprintln(w, "  version                                                print the httpfly version")
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "-name restricts either command to the single request declared with \"# @name X\".")
 	fmt.Fprintln(w, "-env applies the named environment's variables from httpfly.env.json (next to the")
