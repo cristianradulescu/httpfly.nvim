@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- `httpfly convert from-curl` — converts a bash-style curl command (e.g. a
+  browser's "Copy as cURL" output) into a `.http` request block. Handles
+  multi-line commands with `\` continuations, single/double-quoted
+  arguments (including values with embedded quotes/colons/commas), both
+  `curl <url>` and `curl --url <url>` forms, and maps `-H`/`-b`/`-u`/`-x`/
+  `-d` onto headers/Cookie/Basic-auth/`@proxy`/body respectively. Reads
+  from stdin by default, or a file with `-file`. Flags with no httpfly
+  equivalent (`-k`, `-o`, file-based `-d @file`) are dropped with a
+  warning on stderr, never polluting the generated file on stdout.
+  Windows `cmd.exe`/PowerShell "Copy as cURL" variants aren't supported.
+- `httpfly convert to-curl` — the reverse: converts one request from an
+  `.http` file into a multi-line, bash-style curl command. `-name` picks
+  the request (required if the file has more than one); `-env` resolves
+  variables the same way `run`/`validate` do, but no script runs as part
+  of the conversion, and a variable still undefined afterward is a hard
+  error rather than a warning, since there's no later chance to fill it
+  in the way `run` has.
+
 ## [0.1.1] - 2026-08-23
 
 ### Added

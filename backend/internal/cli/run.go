@@ -148,7 +148,7 @@ func sendWithScripts(c *client.Client, req httpfile.Request, baseVars map[string
 
 	vars := mergeVars(mergeVars(baseVars, global.Vars()), req.Variables)
 	resolved, resolveIssues := parser.Resolve(req, vars)
-	if err := issuesAsSendError(resolveIssues); err != nil {
+	if err := issuesAsFatal(resolveIssues, "cannot send"); err != nil {
 		return requestOutcome{Result: client.Result{Request: resolved, Err: err}}
 	}
 
@@ -161,13 +161,15 @@ func sendWithScripts(c *client.Client, req httpfile.Request, baseVars map[string
 	return requestOutcome{Result: result, ScriptErr: scriptErr}
 }
 
-// issuesAsSendError turns resolution issues into one error if req isn't
-// safe to actually send: an outright error (e.g. an invalid proxy URL), or
-// a variable that's still undefined right before sending -- Analyze only
-// ever warns about that (a script might set it before the request is
-// used), but at send time there's no more "might" left, so httpfly treats
-// it as fatal instead of silently sending a literal "{{name}}".
-func issuesAsSendError(issues []parser.Issue) error {
+// issuesAsFatal turns resolution issues into one error, prefixed by verb,
+// if req isn't safe to actually use: an outright error (e.g. an invalid
+// proxy URL), or a variable that's still undefined -- Analyze only ever
+// warns about that (a script might set it before the request is used),
+// but by the time a caller is about to send it, or export it as a final
+// artifact like a curl command, there's no more "might" left, so httpfly
+// treats it as fatal instead of silently producing something with a
+// literal "{{name}}" in it.
+func issuesAsFatal(issues []parser.Issue, verb string) error {
 	var msgs []string
 	for _, issue := range issues {
 		if issue.Severity == parser.SeverityError || parser.IsUndefinedVariableIssue(issue) {
@@ -177,7 +179,7 @@ func issuesAsSendError(issues []parser.Issue) error {
 	if len(msgs) == 0 {
 		return nil
 	}
-	return fmt.Errorf("cannot send: %s", strings.Join(msgs, "; "))
+	return fmt.Errorf("%s: %s", verb, strings.Join(msgs, "; "))
 }
 
 func printResult(w io.Writer, r client.Result, verbose bool) {

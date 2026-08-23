@@ -15,9 +15,9 @@ import (
 // failure; wrap it with fmt.Errorf's %w or return it directly.
 var ErrSilent = errors.New("")
 
-// Run dispatches args to a subcommand, writing normal and error output to
-// stdout/stderr respectively.
-func Run(args []string, stdout, stderr io.Writer) error {
+// Run dispatches args to a subcommand, reading from stdin and writing
+// normal/error output to stdout/stderr respectively.
+func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	if len(args) == 0 {
 		printUsage(stderr)
 		return fmt.Errorf("missing command")
@@ -28,6 +28,8 @@ func Run(args []string, stdout, stderr io.Writer) error {
 		return runCommand(args[1:], stdout)
 	case "validate":
 		return validateCommand(args[1:], stdout)
+	case "convert":
+		return convertCommand(args[1:], stdin, stdout, stderr)
 	case "version", "-version", "--version":
 		fmt.Fprintf(stdout, "httpfly %s\n", Version)
 		return nil
@@ -46,6 +48,8 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "commands:")
 	fmt.Fprintln(w, "  run [-name X] [-env E] [-s | -json] [-v] <file.http>   send the requests in an .http file and print their responses")
 	fmt.Fprintln(w, "  validate [-name X] [-env E] <file.http>                report per-block validation issues in an .http file")
+	fmt.Fprintln(w, "  convert from-curl [-name X] [-file F]                  convert a bash-style curl command (stdin, or -file) to .http")
+	fmt.Fprintln(w, "  convert to-curl [-name X] [-env E] <file.http>         convert an .http request to a multi-line bash-style curl command")
 	fmt.Fprintln(w, "  version                                                print the httpfly version")
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "-name restricts either command to the single request declared with \"# @name X\".")

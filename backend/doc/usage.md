@@ -77,6 +77,75 @@ checked and at which severity.
 <N> request(s) checked, <N> error(s), <N> warning(s)
 ```
 
+### `convert from-curl`
+
+```
+httpfly convert from-curl [-name X] [-file F]
+```
+
+Converts a **bash-style** `curl` command (e.g. a browser's "Copy as cURL"
+output) into a single `.http` request block, printed to stdout. Reads the
+curl command from stdin by default, or from a file with `-file`:
+
+```sh
+pbpaste | httpfly convert from-curl -name GetUser > get-user.http
+httpfly convert from-curl -file request.curl -name GetUser > get-user.http
+```
+
+`-name` sets the generated request's `@name` (mandatory in the `.http`
+format); if omitted, it defaults to `ConvertedRequest`.
+
+Handles both `curl <url> ...` and `curl --url <url> ...`, multi-line
+commands with `\` line continuations, and single- or double-quoted
+arguments (including headers with embedded quotes, colons, or commas —
+common in real captured requests, e.g. `sec-ch-ua`, `if-none-match`).
+`-H`/`--header` become header lines; `-b`/`--cookie` becomes a `Cookie`
+header; `-u`/`--user` becomes a Basic `Authorization` header; `-x`/`--proxy`
+becomes `@proxy`; `-d`/`--data*` becomes the body (and infers `POST` if no
+explicit `-X` is given, matching curl's own rule). A flag with no httpfly
+equivalent (`-k`/`--insecure`, `-o`/`--output`, reading data from a file
+with `@file`) is dropped with a warning printed to stderr — the generated
+`.http` file on stdout is never polluted by these warnings.
+
+Only bash-style curl output is supported — `cmd.exe`/PowerShell "Copy as
+cURL" variants use different escaping and aren't handled.
+
+**The generated file is exactly as sensitive as the curl command it came
+from** — a command copied from an authenticated browser tab will carry
+live session cookies/tokens in plaintext. Treat it with the same care
+you'd give the original curl command (don't commit it, etc.) — httpfly
+doesn't do anything special to protect or flag that content.
+
+### `convert to-curl`
+
+```
+httpfly convert to-curl [-name X] [-env E] <file.http>
+```
+
+The reverse: converts one request from `<file.http>` into a multi-line,
+bash-style curl command, printed to stdout — for pasting into a terminal
+or sharing with someone who doesn't use httpfly.
+
+`-name` picks which request to convert; required if the file has more
+than one (there's no default when it's ambiguous). `-env` resolves
+`{{variable}}` placeholders the same way `run`/`validate` do (prelude →
+`-env` environment → persisted `client.global` state → the request's own
+local variables) — but **no script runs** as part of this conversion
+(same read-only principle as `validate`), and a variable still undefined
+after that resolution is a **hard error**, not a warning: a curl command
+containing a literal `{{name}}` would just be broken, and unlike `run`
+there's no later chance for a script to fill it in.
+
+`Method` is always emitted explicitly via `-X` (even for `GET`), headers
+become `-H 'Name: Value'` in their original order, `Body` becomes
+`--data-raw`, and `@proxy` becomes `-x`. A `Cookie` or Basic-auth
+`Authorization` header is emitted as a plain header, not un-mapped back
+into `-b`/`-u` — equally valid curl, without guessing intent.
+
+```sh
+httpfly convert to-curl -name Login doc/examples/3_scripting.http
+```
+
 ### `help`
 
 ```
@@ -91,10 +160,13 @@ exits non-zero, since a command is required).
 | Flag | Commands | Meaning |
 |---|---|---|
 | `-name X` | `run`, `validate` | Restrict to the single request declared with `# @name X`. Errors if no request has that name. |
-| `-env E` | `run`, `validate` | Apply variables from the environment named `E` in `httpfly.env.json`, found alongside `<file.http>`. See [Environments](environments.md). |
+| `-name X` | `convert from-curl` | Sets the generated request's `@name` (different meaning than for `run`/`validate` — there's no existing request to restrict to). Defaults to `ConvertedRequest` if omitted. |
+| `-name X` | `convert to-curl` | Picks which request to convert. Required if the file has more than one. |
+| `-env E` | `run`, `validate`, `convert to-curl` | Apply variables from the environment named `E` in `httpfly.env.json`, found alongside `<file.http>`. See [Environments](environments.md). |
 | `-s`, `-silent` | `run` | Print only response bodies, back to back, nothing else — like `curl -s`. A failed request prints nothing for itself but still counts toward the exit code. Mutually exclusive with `-json`. |
 | `-json` | `run` | Print a JSON array instead of plain text. See below. Mutually exclusive with `-s`/`-silent`. |
 | `-v`, `-verbose` | `run` | Also report TLS connection details (version, cipher suite, ALPN protocol, peer certificate). No effect on a plain HTTP (non-TLS) request. |
+| `-file F` | `convert from-curl` | Read the curl command from file `F` instead of stdin. |
 
 `-s`/`-silent` and `-v`/`-verbose` are two names for the same flag — use
 either.

@@ -9,7 +9,7 @@ import (
 )
 
 func main() {
-	if err := cli.Run(os.Args[1:], os.Stdout, os.Stderr); err != nil {
+	if err := cli.Run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr); err != nil {
 		if !errors.Is(err, cli.ErrSilent) {
 			fmt.Fprintln(os.Stderr, "httpfly:", err)
 		}

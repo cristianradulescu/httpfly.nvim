@@ -2,7 +2,8 @@
 
 A CLI HTTP client that runs `.http` files (REST Client / IntelliJ HTTP file
 syntax): plain-text request definitions with variables, environments,
-proxy support, and Lua pre-/post-request scripting.
+proxy support, Lua pre-/post-request scripting, and converting to/from a
+bash-style curl command.
 
 ```sh
 httpfly run doc/examples/1_basic.http
@@ -21,7 +22,8 @@ httpfly run doc/examples/1_basic.http
 ## Status
 
 Parsing, validation, `{{variable}}` interpolation, sending requests,
-environments, proxying, and Lua pre-/post-request scripting all work.
+environments, proxying, Lua pre-/post-request scripting, and converting
+both ways between `.http` and a bash-style curl command all work.
 
 ## Development
 
