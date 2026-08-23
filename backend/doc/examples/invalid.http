@@ -30,12 +30,12 @@ X-Broken-Header
 
 ###
 # @name Scripting
-# Pre-request scripting isn't implemented yet. [ERROR]
+# Invalid Lua syntax inside the pre-request script. [ERROR]
 < {%
-  request.variables.set("id", Date.now());
+  this is not valid lua (((
 %}
 
-GET http://localhost:8080/get?id={{id}} HTTP/1.1
+GET http://localhost:8080/get HTTP/1.1
 
 ###
 # @name UnknownMetadata

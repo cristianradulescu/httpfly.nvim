@@ -17,6 +17,7 @@
 
 host = http://localhost:8080
 greeting = hello
+auth_token = demo-token-123
 
 ###
 # @name Get

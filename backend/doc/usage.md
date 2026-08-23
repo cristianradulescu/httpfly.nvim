@@ -16,9 +16,13 @@ Parses `<file.http>`, sends every request it defines (in file order, or
 just one with `-name`), and prints the result of each.
 
 Exit code is non-zero only when a request fails to *send* (DNS failure,
-connection refused, timeout, ...) or when the file fails to parse. A
-non-2xx HTTP response (404, 500, ...) is a normal result, not a failure —
-it's printed like any other response and doesn't affect the exit code.
+connection refused, timeout, ...), its post-request script errors, or the
+file fails to parse. A non-2xx HTTP response (404, 500, ...) is a normal
+result, not a failure — it's printed like any other response and doesn't
+affect the exit code.
+
+A `< {% %}`/`> {% %}` script attached to a request runs right before it's
+sent / right after its response arrives — see [Scripting](scripting.md).
 
 **Plain-text output** (the default), one block per request:
 
@@ -109,6 +113,7 @@ Each request becomes one object in a JSON array:
       "tls": { "...": "... (only present with -v)" }
     },
     "final_url": "... (only present if the request was redirected)",
+    "script_error": "... (only present if a post-request script errored)",
     "duration_ms": 12
   }
 ]
@@ -138,4 +143,4 @@ leaf, for brevity).
 | Code | Meaning |
 |---|---|
 | `0` | Success. |
-| `1` | Bad arguments, a file that failed to parse, `validate` finding an `ERROR`-severity issue, or `run` failing to send one or more requests. |
+| `1` | Bad arguments, a file that failed to parse, `validate` finding an `ERROR`-severity issue, or `run` failing to send one or more requests (including a pre-request script error) or a post-request script erroring. |

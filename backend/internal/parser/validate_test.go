@@ -195,14 +195,112 @@ func TestAnalyzeUnrecognizedProtoWarns(t *testing.T) {
 	}
 }
 
-func TestAnalyzeScriptingBlockErrors(t *testing.T) {
-	src := "###\n< {%\n  request.variables.set(\"id\", 1);\n%}\n\nGET http://localhost:8080/get HTTP/1.1\n"
+func TestAnalyzePreRequestScriptCaptured(t *testing.T) {
+	src := "###\n# @name Get\n< {%\n  request.variables:set(\"id\", 1)\n%}\n\nGET http://localhost:8080/get?id={{id}} HTTP/1.1\n"
 	result, err := Analyze(strings.NewReader(src))
 	if err != nil {
 		t.Fatalf("Analyze: %v", err)
 	}
-	if !result.HasErrors() {
-		t.Fatalf("HasErrors() = false, want true, blocks: %+v", result.Blocks)
+	if result.HasErrors() {
+		t.Fatalf("HasErrors() = true, want false: %+v", result.Blocks[0].Issues)
+	}
+	if want, got := "  request.variables:set(\"id\", 1)", result.Blocks[0].Request.PreScript; got != want {
+		t.Errorf("PreScript = %q, want %q", got, want)
+	}
+	if result.Blocks[0].Request.Lang != "lua" {
+		t.Errorf("Lang = %q, want %q", result.Blocks[0].Request.Lang, "lua")
+	}
+}
+
+func TestAnalyzePostRequestScriptCapturedAndSeparatedFromBody(t *testing.T) {
+	src := "###\n# @name Post\nPOST http://localhost:8080/post HTTP/1.1\n\n{\"a\": 1}\n\n> {%\n  client.global:set(\"x\", 1)\n%}\n"
+	result, err := Analyze(strings.NewReader(src))
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	if result.HasErrors() {
+		t.Fatalf("HasErrors() = true, want false: %+v", result.Blocks[0].Issues)
+	}
+	req := result.Blocks[0].Request
+	if want := "{\"a\": 1}"; req.Body != want {
+		t.Errorf("Body = %q, want %q", req.Body, want)
+	}
+	if want := "  client.global:set(\"x\", 1)"; req.PostScript != want {
+		t.Errorf("PostScript = %q, want %q", req.PostScript, want)
+	}
+}
+
+func TestAnalyzeUnterminatedPreScriptErrors(t *testing.T) {
+	src := "###\n# @name Get\n< {%\n  request.variables:set(\"id\", 1)\nGET http://localhost:8080/get HTTP/1.1\n"
+	result, err := Analyze(strings.NewReader(src))
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	issue := findIssue(result.Blocks[0].Issues, "script:pre")
+	if issue == nil || issue.Severity != SeverityError {
+		t.Fatalf("issue = %+v, want an error for an unterminated script block", issue)
+	}
+}
+
+func TestAnalyzeMalformedScriptOpenErrors(t *testing.T) {
+	src := "###\n# @name Get\n<not-a-script-open\nGET http://localhost:8080/get HTTP/1.1\n"
+	result, err := Analyze(strings.NewReader(src))
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	issue := findIssue(result.Blocks[0].Issues, "script:pre")
+	if issue == nil || issue.Severity != SeverityError {
+		t.Fatalf("issue = %+v, want an error for a malformed script marker", issue)
+	}
+}
+
+func TestAnalyzeInvalidLuaSyntaxErrors(t *testing.T) {
+	src := "###\n# @name Get\n< {%\n  this is not valid lua (((\n%}\n\nGET http://localhost:8080/get HTTP/1.1\n"
+	result, err := Analyze(strings.NewReader(src))
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	issue := findIssue(result.Blocks[0].Issues, "script:pre")
+	if issue == nil || issue.Severity != SeverityError {
+		t.Fatalf("issue = %+v, want an error for invalid lua syntax", issue)
+	}
+}
+
+func TestAnalyzeLangLuaIsSilent(t *testing.T) {
+	src := "###\n# @name Get\n# @lang lua\nGET http://localhost:8080/get HTTP/1.1\n"
+	result, err := Analyze(strings.NewReader(src))
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	if issue := findIssue(result.Blocks[0].Issues, "metadata:lang"); issue != nil {
+		t.Errorf("issue = %+v, want no issue for @lang lua", issue)
+	}
+}
+
+func TestAnalyzeLangOtherThanLuaWarnsAndFallsBack(t *testing.T) {
+	src := "###\n# @name Get\n# @lang javascript\nGET http://localhost:8080/get HTTP/1.1\n"
+	result, err := Analyze(strings.NewReader(src))
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	issue := findIssue(result.Blocks[0].Issues, "metadata:lang")
+	if issue == nil || issue.Severity != SeverityWarning {
+		t.Fatalf("issue = %+v, want a warning", issue)
+	}
+	if result.Blocks[0].Request.Lang != "lua" {
+		t.Errorf("Lang = %q, want fallback to %q", result.Blocks[0].Request.Lang, "lua")
+	}
+}
+
+func TestAnalyzePostScriptBeforeRequestLineErrors(t *testing.T) {
+	src := "###\n# @name Get\n> {%\n  client.global:set(\"x\", 1)\n%}\nGET http://localhost:8080/get HTTP/1.1\n"
+	result, err := Analyze(strings.NewReader(src))
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	issue := findIssue(result.Blocks[0].Issues, "request-line")
+	if issue == nil || issue.Severity != SeverityError {
+		t.Fatalf("issue = %+v, want an error for a post-script placed before the request line", issue)
 	}
 }
 

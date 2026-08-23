@@ -47,7 +47,7 @@ A block is, in order:
 | Key | Required | Scope | Meaning |
 |---|---|---|---|
 | `name` | **Yes** | request only | The request's identifier — used by `-name` on the CLI. Every request must have a non-empty `@name`; it's an error at file-prelude scope (there's no such thing as a "global name"). |
-| `lang` | No | request only | Names the scripting language for pre-/post-request scripts. Recognized, but scripting itself (`< {% %}` / `> {% %}`) isn't implemented yet — using it is always reported as a warning (and a script block is an error). |
+| `lang` | No | request only | Names the scripting language for pre-/post-request scripts. `lua` is the only supported value (and the default if omitted); anything else is a warning and falls back to Lua. |
 | `proxy` | No | request or global | An absolute proxy URL (`scheme://host[:port]`) to send this request through. See [below](#proxy). |
 
 Any other `@key` is accepted but reported as an "unknown metadata" warning
@@ -115,9 +115,10 @@ env = dev
 GET http://localhost:8080/get?env={{env}} HTTP/1.1   # -> env=dev
 ```
 
-Precedence, highest to lowest: **local variable > `-env` environment
-variable > global (prelude) variable**. See [Environments](environments.md)
-for the middle tier.
+Precedence, highest to lowest: **local variable > persisted `client.global`
+(scripting) > `-env` environment variable > global (prelude) variable**.
+See [Environments](environments.md) and [Scripting](scripting.md) for the
+middle two tiers.
 
 An `{{unknown}}` placeholder with no matching declaration is left as
 literal text in the output and reported as a warning — it doesn't stop the
@@ -153,16 +154,17 @@ the report format). At a glance:
 
 | Severity | Examples |
 |---|---|
-| `ERROR` (blocks the request / fails validation) | Missing or empty `@name`; request line that isn't `METHOD URL [PROTO]`; relative URL; malformed header line (no `:`); `@proxy` that isn't absolute; a scripting block (`< {%`/`> {%`); `@name`/`@lang` declared in the prelude. |
-| `WARN` (still usable, just worth knowing) | Unknown `@key`; non-standard HTTP method; unrecognized `PROTO` string; `@lang` (scripting isn't implemented); undefined `{{variable}}`. |
+| `ERROR` (blocks the request / fails validation) | Missing or empty `@name`; request line that isn't `METHOD URL [PROTO]`; relative URL; malformed header line (no `:`); `@proxy` that isn't absolute; `@name`/`@lang` declared in the prelude; a malformed or unterminated script block; a script with invalid Lua syntax. |
+| `WARN` (still usable, just worth knowing) | Unknown `@key`; non-standard HTTP method; unrecognized `PROTO` string; `@lang` set to something other than `lua`; undefined `{{variable}}`. |
 
 `doc/examples/invalid.http` in this repo demonstrates each of these, one
 issue per block — a good file to run `httpfly validate` against to see the
 report format.
 
-## Not yet implemented
+## Scripting
 
-Pre-/post-request scripting (`< {% ... %}` before the request line, `>
-{% ... %}` after it) is recognized syntactically — httpfly's validator
-correctly identifies these blocks — but isn't executed. A file containing
-one will report an error from `validate` and refuse to `run`.
+A request can carry a `< {% ... %}` (pre-request) and/or `> {% ... %}`
+(post-request) Lua script — for capturing an auth token from a response,
+reading a local file, or running a command. See [Scripting](scripting.md)
+for the full reference; `httpfly validate` only checks a script compiles,
+it never executes one.

@@ -7,12 +7,26 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/cristianradulescu/httpfly/internal/client"
+	"github.com/cristianradulescu/httpfly/internal/httpfile"
 	"github.com/cristianradulescu/httpfly/internal/parser"
+	"github.com/cristianradulescu/httpfly/internal/script"
+	"github.com/cristianradulescu/httpfly/internal/state"
 )
+
+// requestOutcome is one request's result plus any error from its
+// post-request script. A script error is tracked separately from
+// Result.Err because, unlike a transport failure, the response was
+// received successfully -- it should still be shown/counted, just flagged.
+type requestOutcome struct {
+	Result    client.Result
+	ScriptErr error
+}
 
 func runCommand(args []string, stdout io.Writer) error {
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
@@ -42,13 +56,24 @@ func runCommand(args []string, stdout io.Writer) error {
 		return fmt.Errorf("run: %w", err)
 	}
 
+	dir := filepath.Dir(path)
+	persisted, err := state.Load(dir, *envName)
+	if err != nil {
+		return fmt.Errorf("run: %w", err)
+	}
+
 	f, err := os.Open(path)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
 
-	file, err := parser.ParseWithEnv(f, envVars)
+	// Persisted client.global values take precedence over the environment's
+	// (but not over a request's own local variables, which mergeVars inside
+	// the parser still applies on top of whatever ParseWithEnv is given
+	// here) -- so a token a script set earlier is what {{auth_token}}
+	// actually resolves to.
+	file, err := parser.ParseWithEnv(f, mergeVars(envVars, persisted))
 	if err != nil {
 		return err
 	}
@@ -58,36 +83,93 @@ func runCommand(args []string, stdout io.Writer) error {
 		return fmt.Errorf("run: %w", err)
 	}
 
+	global := script.NewGlobalState(dir, *envName, persisted)
+
 	c := client.New()
 	var failed int
-	var results []client.Result
+	var outcomes []requestOutcome
 	for _, req := range requests {
-		result := c.Send(context.Background(), req)
+		outcome := sendWithScripts(c, req, file.Variables, global)
 		switch {
 		case *jsonOutput:
-			results = append(results, result)
+			outcomes = append(outcomes, outcome)
 		case silent:
-			if result.Err == nil {
-				stdout.Write(result.Body)
+			if outcome.Result.Err == nil {
+				stdout.Write(outcome.Result.Body)
 			}
 		default:
-			printResult(stdout, result, verbose)
+			printResult(stdout, outcome.Result, verbose)
+			if outcome.ScriptErr != nil {
+				fmt.Fprintf(stdout, "post-request script error: %v\n\n", outcome.ScriptErr)
+			}
 		}
-		if result.Err != nil {
+		if outcome.Result.Err != nil || outcome.ScriptErr != nil {
 			failed++
 		}
 	}
 
 	if *jsonOutput {
-		if err := printJSONResults(stdout, results, verbose); err != nil {
+		if err := printJSONResults(stdout, outcomes, verbose); err != nil {
 			return fmt.Errorf("run: %w", err)
 		}
 	}
 
 	if failed > 0 {
-		return fmt.Errorf("run: %d of %d request(s) failed to send", failed, len(requests))
+		return fmt.Errorf("run: %d of %d request(s) failed", failed, len(requests))
 	}
 	return nil
+}
+
+// sendWithScripts runs req's pre-request script (if any -- which may set
+// persisted client.global values), re-resolves req's "{{var}}" placeholders
+// against the current variables (base, overridden by whatever's in global
+// right now -- including anything an earlier request in this same run just
+// set -- overridden by req's own local variables), sends it, and runs its
+// post-request script (if any) once a response is received successfully.
+//
+// Re-resolving here rather than trusting the URL/headers/body Analyze
+// already produced is what makes a value set by one request's post-request
+// script available to a later request, whether that's a later block in the
+// same "httpfly run" or a request in a separate, later invocation.
+func sendWithScripts(c *client.Client, req httpfile.Request, baseVars map[string]string, global *script.GlobalState) requestOutcome {
+	if req.PreScript != "" {
+		if err := script.RunPreScript(req.PreScript, global); err != nil {
+			return requestOutcome{Result: client.Result{Request: req, Err: fmt.Errorf("pre-request script: %w", err)}}
+		}
+	}
+
+	vars := mergeVars(mergeVars(baseVars, global.Vars()), req.Variables)
+	resolved, resolveIssues := parser.Resolve(req, vars)
+	if err := issuesAsSendError(resolveIssues); err != nil {
+		return requestOutcome{Result: client.Result{Request: resolved, Err: err}}
+	}
+
+	result := c.Send(context.Background(), resolved)
+
+	var scriptErr error
+	if result.Err == nil && req.PostScript != "" {
+		scriptErr = script.RunPostScript(req.PostScript, result, global)
+	}
+	return requestOutcome{Result: result, ScriptErr: scriptErr}
+}
+
+// issuesAsSendError turns resolution issues into one error if req isn't
+// safe to actually send: an outright error (e.g. an invalid proxy URL), or
+// a variable that's still undefined right before sending -- Analyze only
+// ever warns about that (a script might set it before the request is
+// used), but at send time there's no more "might" left, so httpfly treats
+// it as fatal instead of silently sending a literal "{{name}}".
+func issuesAsSendError(issues []parser.Issue) error {
+	var msgs []string
+	for _, issue := range issues {
+		if issue.Severity == parser.SeverityError || parser.IsUndefinedVariableIssue(issue) {
+			msgs = append(msgs, fmt.Sprintf("%s: %s", issue.Element, issue.Message))
+		}
+	}
+	if len(msgs) == 0 {
+		return nil
+	}
+	return fmt.Errorf("cannot send: %s", strings.Join(msgs, "; "))
 }
 
 func printResult(w io.Writer, r client.Result, verbose bool) {

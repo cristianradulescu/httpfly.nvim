@@ -1,0 +1,34 @@
+# Pre-/post-request scripting, in Lua: a login -> token -> authenticated
+# request chain, the pattern for real APIs that issue a session/JWT token on
+# login and expect it back as a Bearer token.
+#
+# Run `make httpbin-up` first. Each request resolves its {{var}} placeholders
+# right before it's sent, using whatever client.global currently holds -- so
+# this works either way:
+#
+#   httpfly run doc/examples/3_scripting.http                      # both at once
+#
+# or, e.g. if you only want to re-authenticate occasionally rather than on
+# every run:
+#
+#   httpfly run -name Login doc/examples/3_scripting.http
+#   httpfly run -name AuthenticatedRequest doc/examples/3_scripting.http
+#
+# Either way, AuthenticatedRequest's {{auth_token}} is whatever Login's
+# post-request script most recently set (persisted in .httpfly/state.json).
+# See doc/scripting.md.
+
+###
+# @name Login
+GET http://localhost:8080/uuid HTTP/1.1
+
+> {%
+  local json = require("json")
+  local data = json.decode(response.body)
+  client.global:set("auth_token", data.uuid)
+%}
+
+###
+# @name AuthenticatedRequest
+GET http://localhost:8080/bearer HTTP/1.1
+Authorization: Bearer {{auth_token}}

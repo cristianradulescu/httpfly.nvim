@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
 	"github.com/cristianradulescu/httpfly/internal/parser"
+	"github.com/cristianradulescu/httpfly/internal/state"
 )
 
 func validateCommand(args []string, stdout io.Writer) error {
@@ -28,6 +30,10 @@ func validateCommand(args []string, stdout io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("validate: %w", err)
 	}
+	persisted, err := state.Load(filepath.Dir(path), *envName)
+	if err != nil {
+		return fmt.Errorf("validate: %w", err)
+	}
 
 	f, err := os.Open(path)
 	if err != nil {
@@ -35,7 +41,7 @@ func validateCommand(args []string, stdout io.Writer) error {
 	}
 	defer f.Close()
 
-	result, err := parser.AnalyzeWithEnv(f, envVars)
+	result, err := parser.AnalyzeWithEnv(f, mergeVars(envVars, persisted))
 	if err != nil {
 		return err
 	}

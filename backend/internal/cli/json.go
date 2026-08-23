@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"io"
 
-	"github.com/cristianradulescu/httpfly/internal/client"
 	"github.com/cristianradulescu/httpfly/internal/httpfile"
 )
 
@@ -13,12 +12,13 @@ import (
 // sent, the response as received, and either is present -- a transport
 // failure (DNS, connection refused, ...) has no response, just Error.
 type jsonResult struct {
-	Name       string        `json:"name"`
-	Request    jsonRequest   `json:"request"`
-	Response   *jsonResponse `json:"response,omitempty"`
-	FinalURL   string        `json:"final_url,omitempty"`
-	Error      string        `json:"error,omitempty"`
-	DurationMs int64         `json:"duration_ms"`
+	Name        string        `json:"name"`
+	Request     jsonRequest   `json:"request"`
+	Response    *jsonResponse `json:"response,omitempty"`
+	FinalURL    string        `json:"final_url,omitempty"`
+	Error       string        `json:"error,omitempty"`
+	ScriptError string        `json:"script_error,omitempty"`
+	DurationMs  int64         `json:"duration_ms"`
 }
 
 type jsonRequest struct {
@@ -49,7 +49,8 @@ type jsonCertificate struct {
 	NotAfter string `json:"not_after"`
 }
 
-func toJSONResult(r client.Result, verbose bool) jsonResult {
+func toJSONResult(o requestOutcome, verbose bool) jsonResult {
+	r := o.Result
 	out := jsonResult{
 		Name: r.Request.Name,
 		Request: jsonRequest{
@@ -78,6 +79,9 @@ func toJSONResult(r client.Result, verbose bool) jsonResult {
 	}
 	if verbose {
 		out.Response.TLS = toJSONTLS(r.TLS)
+	}
+	if o.ScriptErr != nil {
+		out.ScriptError = o.ScriptErr.Error()
 	}
 	return out
 }
@@ -110,10 +114,10 @@ func headersToMap(headers []httpfile.Header) map[string][]string {
 	return m
 }
 
-func printJSONResults(w io.Writer, results []client.Result, verbose bool) error {
-	out := make([]jsonResult, len(results))
-	for i, r := range results {
-		out[i] = toJSONResult(r, verbose)
+func printJSONResults(w io.Writer, outcomes []requestOutcome, verbose bool) error {
+	out := make([]jsonResult, len(outcomes))
+	for i, o := range outcomes {
+		out[i] = toJSONResult(o, verbose)
 	}
 
 	enc := json.NewEncoder(w)

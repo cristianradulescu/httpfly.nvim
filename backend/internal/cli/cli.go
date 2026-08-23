@@ -46,4 +46,8 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "-json (run only) prints a JSON array of {name, request, response|error, duration_ms}.")
 	fmt.Fprintln(w, "-v/-verbose (run only) also prints TLS connection details (version, cipher, peer certificate).")
 	fmt.Fprintln(w, "A redirected request's final URL is always noted, in either output format.")
+	fmt.Fprintln(w, "")
+	fmt.Fprintln(w, "\"< {% ... %}\" and \"> {% ... %}\" blocks run as Lua pre-/post-request scripts. They can")
+	fmt.Fprintln(w, "read/write persisted variables via client.global:get/set(name[, value]) -- saved to")
+	fmt.Fprintln(w, "  .httpfly/state.json next to the .http file, so a later, separate run reuses them.")
 }

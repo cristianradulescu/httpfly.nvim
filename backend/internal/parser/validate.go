@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"strings"
 
+	lua "github.com/yuin/gopher-lua"
+
 	"github.com/cristianradulescu/httpfly/internal/httpfile"
 	"github.com/cristianradulescu/httpfly/internal/interpolate"
 )
@@ -37,6 +39,22 @@ type Issue struct {
 	Element  string // e.g. "metadata:name", "method", "url", "proto", "header"
 	Severity Severity
 	Message  string
+}
+
+// undefinedVariablePrefix is how undefinedVariableIssue's Message always
+// starts, so IsUndefinedVariableIssue can recognize one without a
+// dedicated field on Issue.
+const undefinedVariablePrefix = "undefined variable "
+
+// IsUndefinedVariableIssue reports whether issue is the "undefined
+// variable" warning Resolve emits for an unresolved "{{name}}" placeholder.
+// A caller re-resolving right before actually using a request (e.g. the CLI
+// immediately before sending) may want to treat this as fatal even though
+// Analyze only ever reports it as a warning (at parse/validate time, a
+// variable that's undefined now might still be set by a script before the
+// request is actually sent).
+func IsUndefinedVariableIssue(issue Issue) bool {
+	return strings.HasPrefix(issue.Message, undefinedVariablePrefix)
 }
 
 // BlockResult is the best-effort parsed request and validation issues for
@@ -149,12 +167,12 @@ func parsePrelude(lines []string) (vars map[string]string, metadata map[string]s
 	return vars, metadata, issues
 }
 
-// validateBlock parses and validates one ###-delimited block, merging its
-// local variables/metadata over the file's global defaults (local wins) and
-// resolving any "{{var}}" placeholders in the URL, headers, body, and proxy
-// against the merged variables. ok is false for blocks that contain only
-// comments/blank/variable-declaration lines -- those aren't requests and
-// produce no issues.
+// validateBlock parses one ###-delimited block -- metadata, local variable
+// declarations, the request line, headers, proxy, scripts, and body -- then
+// resolves it against vars (see Resolve) using the variables known at parse
+// time. ok is false for blocks that contain only comments/blank/
+// variable-declaration lines -- those aren't requests and produce no
+// issues.
 func validateBlock(lines []string, globalVars, globalMetadata map[string]string) (req httpfile.Request, issues []Issue, ok bool) {
 	i := 0
 	nameDeclared := false
@@ -200,20 +218,55 @@ func validateBlock(lines []string, globalVars, globalMetadata map[string]string)
 		})
 	}
 
-	vars := mergeVars(globalVars, localVars)
+	req.Variables = localVars
+	req.Lang = "lua"
 
 	line := strings.TrimSpace(lines[i])
-	if strings.HasPrefix(line, "<") || strings.HasPrefix(line, ">") {
+	if strings.HasPrefix(line, "<") {
+		if !isScriptOpenLine(line, "<") {
+			issues = append(issues, Issue{
+				Element:  "script:pre",
+				Severity: SeverityError,
+				Message:  fmt.Sprintf("malformed pre-request script marker %q, expected \"< {%%}\"", line),
+			})
+			return req, issues, true
+		}
+		source, next, closed := scriptBlock(lines, i)
+		if !closed {
+			issues = append(issues, Issue{
+				Element:  "script:pre",
+				Severity: SeverityError,
+				Message:  "unterminated \"< {%\" script block (missing closing \"%}\")",
+			})
+			return req, issues, true
+		}
+		issues = append(issues, checkScriptSyntax("script:pre", source)...)
+		req.PreScript = source
+		i = next
+		for i < len(lines) && strings.TrimSpace(lines[i]) == "" {
+			i++
+		}
+		if i >= len(lines) {
+			issues = append(issues, Issue{
+				Element:  "request-line",
+				Severity: SeverityError,
+				Message:  "missing request line after pre-request script",
+			})
+			return req, issues, true
+		}
+		line = strings.TrimSpace(lines[i])
+	}
+	if strings.HasPrefix(line, ">") {
 		issues = append(issues, Issue{
 			Element:  "request-line",
 			Severity: SeverityError,
-			Message:  "pre/post-request scripting is not yet supported",
+			Message:  "unexpected \"> {%\" before the request line (post-request scripts go after headers/body, not before it)",
 		})
 		return req, issues, true
 	}
 
-	method, rawURL, proto, lineIssues := validateRequestLine(line, vars)
-	req.Method, req.URL, req.Proto = method, rawURL, proto
+	method, rawURL, proto, lineIssues := parseRequestLine(line)
+	req.Method, req.RawURL, req.Proto = method, rawURL, proto
 	issues = append(issues, lineIssues...)
 	i++
 
@@ -223,9 +276,9 @@ func validateBlock(lines []string, globalVars, globalMetadata map[string]string)
 		if line == "" {
 			break
 		}
-		header, headerIssues := validateHeader(line, vars)
+		header, headerIssues := parseHeaderLine(line)
 		if !hasError(headerIssues) {
-			req.Headers = append(req.Headers, header)
+			req.RawHeaders = append(req.RawHeaders, header)
 		}
 		issues = append(issues, headerIssues...)
 	}
@@ -234,17 +287,154 @@ func validateBlock(lines []string, globalVars, globalMetadata map[string]string)
 	if rawProxy == "" {
 		rawProxy = globalMetadata["proxy"]
 	}
-	resolvedProxy, proxyIssues := resolveProxy(rawProxy, vars)
-	req.Proxy = resolvedProxy
-	issues = append(issues, proxyIssues...)
+	req.RawProxy = rawProxy
 
-	body, missing := interpolate.Apply(trimBody(lines[i:]), vars)
+	bodyLines, postScript, postIssues := extractPostScript(lines[i:])
+	issues = append(issues, postIssues...)
+	if postScript != "" {
+		issues = append(issues, checkScriptSyntax("script:post", postScript)...)
+		req.PostScript = postScript
+	}
+	req.RawBody = trimBody(bodyLines)
+
+	vars := mergeVars(globalVars, localVars)
+	resolved, resolveIssues := Resolve(req, vars)
+	issues = append(issues, resolveIssues...)
+
+	return resolved, issues, true
+}
+
+// Resolve interpolates req's still-templated fields (RawURL, RawHeaders,
+// RawBody, RawProxy) against vars, returning a copy with URL, Headers,
+// Body, and Proxy filled in, plus any issues found while doing so
+// (undefined variables, or a URL/proxy that still isn't absolute once
+// resolved). Method, Proto, and every other field are copied through
+// unchanged.
+//
+// Analyze calls this once per block, using the variables known at parse
+// time. A caller that runs scripts (the CLI's "run" command) calls it
+// again immediately before actually sending a request, with whatever
+// variables are current at that point -- which may include values an
+// earlier request's post-request script just set -- so a request sees the
+// most up-to-date variables available right before it's used, not just
+// whatever was known when the file was first parsed.
+func Resolve(req httpfile.Request, vars map[string]string) (httpfile.Request, []Issue) {
+	var issues []Issue
+
+	if req.RawURL != "" {
+		resolvedURL, missing := interpolate.ApplyURL(req.RawURL, vars)
+		req.URL = resolvedURL
+		for _, name := range missing {
+			issues = append(issues, undefinedVariableIssue("url", name))
+		}
+		if u, err := url.Parse(resolvedURL); err != nil {
+			issues = append(issues, Issue{
+				Element:  "url",
+				Severity: SeverityError,
+				Message:  fmt.Sprintf("invalid URL: %v", err),
+			})
+		} else if (u.Scheme == "" || u.Host == "") && len(missing) == 0 {
+			// A still-unresolved placeholder already explains why this
+			// doesn't look absolute; don't pile on a second issue for it.
+			issues = append(issues, Issue{
+				Element:  "url",
+				Severity: SeverityError,
+				Message:  "URL must be absolute (missing scheme or host)",
+			})
+		}
+	}
+
+	req.Headers = nil
+	for _, h := range req.RawHeaders {
+		value, missing := interpolate.Apply(h.Value, vars)
+		for _, name := range missing {
+			issues = append(issues, undefinedVariableIssue("header:"+h.Name, name))
+		}
+		req.Headers = append(req.Headers, httpfile.Header{Name: h.Name, Value: value})
+	}
+
+	body, missing := interpolate.Apply(req.RawBody, vars)
 	req.Body = body
 	for _, name := range missing {
 		issues = append(issues, undefinedVariableIssue("body", name))
 	}
 
-	return req, issues, true
+	resolvedProxy, proxyIssues := resolveProxy(req.RawProxy, vars)
+	req.Proxy = resolvedProxy
+	issues = append(issues, proxyIssues...)
+
+	return req, issues
+}
+
+// isScriptOpenLine reports whether line (already trimmed) is exactly
+// "<marker> {%", the opening of a script block.
+func isScriptOpenLine(line, marker string) bool {
+	return strings.TrimSpace(strings.TrimPrefix(line, marker)) == "{%"
+}
+
+// scriptBlock captures a script's source starting right after lines[openIdx]
+// (which must already be a verified opening line) up to a line that is
+// exactly "%}". next is the index of the first line after that closing
+// line; closed is false if no closing line was found before EOF.
+func scriptBlock(lines []string, openIdx int) (source string, next int, closed bool) {
+	var src []string
+	j := openIdx + 1
+	for j < len(lines) {
+		if strings.TrimSpace(lines[j]) == "%}" {
+			return strings.Join(src, "\n"), j + 1, true
+		}
+		src = append(src, lines[j])
+		j++
+	}
+	return strings.Join(src, "\n"), j, false
+}
+
+// extractPostScript looks for a "> {%" ... "%}" block anywhere in lines
+// (the request's body region) and, if found, splits it out: bodyLines is
+// everything before the block, script is its source. If no such block
+// exists, bodyLines is lines unchanged and script is "".
+func extractPostScript(lines []string) (bodyLines []string, script string, issues []Issue) {
+	for idx, raw := range lines {
+		if strings.TrimSpace(raw) != "> {%" {
+			continue
+		}
+		source, next, closed := scriptBlock(lines, idx)
+		if !closed {
+			return lines, "", []Issue{{
+				Element:  "script:post",
+				Severity: SeverityError,
+				Message:  "unterminated \"> {%\" script block (missing closing \"%}\")",
+			}}
+		}
+		for _, trailing := range lines[next:] {
+			if strings.TrimSpace(trailing) != "" {
+				issues = append(issues, Issue{
+					Element:  "script:post",
+					Severity: SeverityWarning,
+					Message:  "content after the post-request script is ignored",
+				})
+				break
+			}
+		}
+		return lines[:idx], source, issues
+	}
+	return lines, "", nil
+}
+
+// checkScriptSyntax compiles (but never runs) a script's Lua source, so
+// validate catches syntax errors without the side effects actually running
+// it might have.
+func checkScriptSyntax(element, source string) []Issue {
+	L := lua.NewState(lua.Options{SkipOpenLibs: true})
+	defer L.Close()
+	if _, err := L.LoadString(source); err != nil {
+		return []Issue{{
+			Element:  element,
+			Severity: SeverityError,
+			Message:  fmt.Sprintf("lua syntax error: %v", err),
+		}}
+	}
+	return nil
 }
 
 func mergeVars(global, local map[string]string) map[string]string {
@@ -284,11 +474,17 @@ func validateMetadata(key, value string) []Issue {
 		}
 		return nil
 	case "lang":
-		return []Issue{{
-			Element:  "metadata:lang",
-			Severity: SeverityWarning,
-			Message:  "recognized but not yet supported (pre/post-request scripting is unimplemented)",
-		}}
+		if value == "" {
+			return []Issue{{Element: "metadata:lang", Severity: SeverityError, Message: "@lang requires a value"}}
+		}
+		if !strings.EqualFold(value, "lua") {
+			return []Issue{{
+				Element:  "metadata:lang",
+				Severity: SeverityWarning,
+				Message:  fmt.Sprintf("unsupported scripting language %q; only \"lua\" is currently supported (falling back to lua)", value),
+			}}
+		}
+		return nil
 	case "proxy":
 		if value == "" {
 			return []Issue{{Element: "metadata:proxy", Severity: SeverityError, Message: "@proxy requires a value"}}
@@ -303,9 +499,12 @@ func validateMetadata(key, value string) []Issue {
 	}
 }
 
-func validateRequestLine(line string, vars map[string]string) (method, resolvedURL, proto string, issues []Issue) {
+// parseRequestLine performs structural parsing of a request line only --
+// splitting out the method, URL template, and proto, plus checks that
+// don't depend on variable values (method standardness, proto format).
+// Resolving {{var}} placeholders in the URL happens later, in Resolve.
+func parseRequestLine(line string) (method, rawURL, proto string, issues []Issue) {
 	fields := strings.Fields(line)
-	var rawURL string
 	switch len(fields) {
 	case 2:
 		method, rawURL, proto = fields[0], fields[1], "HTTP/1.1"
@@ -327,27 +526,6 @@ func validateRequestLine(line string, vars map[string]string) (method, resolvedU
 		})
 	}
 
-	resolvedURL, missing := interpolate.ApplyURL(rawURL, vars)
-	for _, name := range missing {
-		issues = append(issues, undefinedVariableIssue("url", name))
-	}
-
-	if u, err := url.Parse(resolvedURL); err != nil {
-		issues = append(issues, Issue{
-			Element:  "url",
-			Severity: SeverityError,
-			Message:  fmt.Sprintf("invalid URL: %v", err),
-		})
-	} else if (u.Scheme == "" || u.Host == "") && len(missing) == 0 {
-		// A still-unresolved placeholder already explains why this doesn't
-		// look absolute; don't pile on a second issue for it.
-		issues = append(issues, Issue{
-			Element:  "url",
-			Severity: SeverityError,
-			Message:  "URL must be absolute (missing scheme or host)",
-		})
-	}
-
 	if len(fields) == 3 && !protoPattern.MatchString(proto) {
 		issues = append(issues, Issue{
 			Element:  "proto",
@@ -356,10 +534,13 @@ func validateRequestLine(line string, vars map[string]string) (method, resolvedU
 		})
 	}
 
-	return method, resolvedURL, proto, issues
+	return method, rawURL, proto, issues
 }
 
-func validateHeader(line string, vars map[string]string) (httpfile.Header, []Issue) {
+// parseHeaderLine performs structural parsing of a "Name: Value" header
+// line -- Value is returned as its still-templated raw text; resolving any
+// {{var}} placeholder in it happens later, in Resolve.
+func parseHeaderLine(line string) (httpfile.Header, []Issue) {
 	name, rawValue, found := strings.Cut(line, ":")
 	if !found {
 		return httpfile.Header{}, []Issue{{
@@ -372,13 +553,7 @@ func validateHeader(line string, vars map[string]string) (httpfile.Header, []Iss
 	if name == "" {
 		return httpfile.Header{}, []Issue{{Element: "header", Severity: SeverityError, Message: "empty header name"}}
 	}
-
-	value, missing := interpolate.Apply(strings.TrimSpace(rawValue), vars)
-	var issues []Issue
-	for _, varName := range missing {
-		issues = append(issues, undefinedVariableIssue("header:"+name, varName))
-	}
-	return httpfile.Header{Name: name, Value: value}, issues
+	return httpfile.Header{Name: name, Value: strings.TrimSpace(rawValue)}, nil
 }
 
 // resolveProxy interpolates and validates an effective "@proxy" value. An
@@ -425,6 +600,6 @@ func undefinedVariableIssue(element, name string) Issue {
 	return Issue{
 		Element:  element,
 		Severity: SeverityWarning,
-		Message:  fmt.Sprintf("undefined variable %q", name),
+		Message:  fmt.Sprintf("%s%q", undefinedVariablePrefix, name),
 	}
 }

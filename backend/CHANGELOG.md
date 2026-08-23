@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Pre-/post-request scripting: `< {% ... %}` (before a request is sent)
+  and `> {% ... %}` (after its response arrives) run as Lua, with
+  `client.global:get/set`, `response.status`/`headers`/`body` (post-request
+  only), and file-read/command-exec/JSON via `require("ioutil"/"cmd"/"json"/"filepath")`
+  ([gopher-lua-libs](https://github.com/vadv/gopher-lua-libs)).
+- `client.global` persists to `.httpfly/state.json` (scoped per directory
+  and per `-env` environment), so a value set by one request's
+  post-request script — e.g. a token from a login request — is available
+  to a later request, whether that's a later request in the *same*
+  `httpfly run` or a separate, later invocation.
+- Each request re-resolves its `{{variable}}` placeholders immediately
+  before it's sent, using whatever `client.global` currently holds — so
+  scripting works the same way whether you run a whole file at once or one
+  request at a time. If a variable is still undefined at that point, `run`
+  fails that request loudly rather than silently sending a literal
+  `{{name}}`.
+- `httpfly validate` compiles (but never runs) a script's Lua source, so
+  syntax errors are caught with none of the side effects actually running
+  it might have.
+- `run -json` gains an optional `script_error` field for a post-request
+  script that errored (the response itself is still included).
+
 ## [0.1.0] - 2026-08-19
 
 ### Added
