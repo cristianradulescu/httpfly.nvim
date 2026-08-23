@@ -14,21 +14,17 @@ local JSON_TOKEN_GROUP = {
   ["null"] = "Constant",
 }
 
--- unicode's own symbols, deliberately not shared.status_badge's/
--- shared.test_mark's full-color emoji: "✅"/"❌" are emoji glyphs whose
--- color usually comes from the terminal's emoji font, not from our
--- DiagnosticOk/Error highlight, so they can end up low-contrast or barely
--- visible depending on terminal/theme. These are plain Unicode dingbats
--- instead, which render as regular glyphs tinted by our own highlight.
+-- unicode's own symbols, deliberately not shared.status_badge's full-color
+-- emoji: "✅"/"❌" are emoji glyphs whose color usually comes from the
+-- terminal's emoji font, not from our DiagnosticOk/Error highlight, so
+-- they can end up low-contrast or barely visible depending on
+-- terminal/theme. These are plain Unicode dingbats instead, which render
+-- as regular glyphs tinted by our own highlight.
 local STATUS_BADGE = { ok = "✔", warn = "⚠", error = "✘" }
 local OUTCOME_GROUP = { ok = "DiagnosticOk", warn = "DiagnosticWarn", error = "DiagnosticError" }
 
 local function status_badge(code)
   return STATUS_BADGE[shared.status_category(code)]
-end
-
-local function test_mark(status)
-  return status == "SUCCESS" and STATUS_BADGE.ok or STATUS_BADGE.error
 end
 
 -- highlight group for a status code's outcome; used for both the badge
@@ -84,7 +80,7 @@ local function append_headers_table(out, truncations, highlights, headers)
   local col1_w = vim.fn.strdisplaywidth(col1_header)
   local col2_w = vim.fn.strdisplaywidth(col2_header)
   for _, k in ipairs(keys) do
-    local display, full = shared.truncate(headers[k])
+    local display, full = shared.truncate(shared.header_value(headers[k]))
     rows[#rows + 1] = { k, display, full }
     col1_w = math.max(col1_w, vim.fn.strdisplaywidth(k))
     col2_w = math.max(col2_w, vim.fn.strdisplaywidth(display))
@@ -171,30 +167,36 @@ function M.render(decoded, cmd_str)
     table.insert(out, "")
   end
 
-  local s = decoded.summary or {}
+  local total, failed, script_errors = #decoded, 0, 0
+  for _, req in ipairs(decoded) do
+    if req.error then
+      failed = failed + 1
+    end
+    if req.script_error then
+      script_errors = script_errors + 1
+    end
+  end
   table.insert(
     out,
     string.format(
-      "httpyac results — %d/%d succeeded, %d failed, %d errored",
-      s.successRequests or 0,
-      s.totalRequests or 0,
-      s.failedRequests or 0,
-      s.erroredRequests or 0
+      "httpfly results — %d/%d sent, %d failed to send, %d script error(s)",
+      total - failed,
+      total,
+      failed,
+      script_errors
     )
   )
   local summary_group = "DiagnosticOk"
-  if (s.erroredRequests or 0) > 0 then
-    summary_group = "DiagnosticError"
-  elseif (s.failedRequests or 0) > 0 then
-    summary_group = "DiagnosticWarn"
+  if failed > 0 or script_errors > 0 then
+    summary_group = failed > 0 and "DiagnosticError" or "DiagnosticWarn"
   end
   hl_line(highlights, out, summary_group)
   table.insert(out, "")
 
-  for _, req in ipairs(decoded.requests) do
+  for _, req in ipairs(decoded) do
+    local rreq = req.request or {}
     local resp = req.response
-    local download_path, test_results = shared.extract_download(req.testResults)
-    local title = (req.name and req.name ~= "") and req.name or req.fileName
+    local title = req.name
     local heavy_rule = string.rep(RULE_HEAVY, math.max(vim.fn.strdisplaywidth(title) + 2, 20))
 
     table.insert(out, heavy_rule)
@@ -205,15 +207,23 @@ function M.render(decoded, cmd_str)
     hl_line(highlights, out, "Comment")
     table.insert(out, "")
 
+    if req.error then
+      table.insert(out, "▸ Error")
+      hl_line(highlights, out, "Title")
+      table.insert(out, "")
+      table.insert(out, "  " .. tostring(req.error))
+      hl_line(highlights, out, "DiagnosticError")
+      table.insert(out, "")
+    end
+
     if resp then
-      local rreq = resp.request or {}
-      local og = outcome_group(resp.statusCode)
-      local badge = status_badge(resp.statusCode)
+      local og = outcome_group(resp.status_code)
+      local badge = status_badge(resp.status_code)
       local method = rreq.method or "?"
       local url = rreq.url or "?"
-      local status_text = string.format("%s %s", tostring(resp.statusCode or "?"), resp.statusMessage or "")
+      local status_text = tostring(resp.status_code or "?")
       local prefix = string.format("%s %s %s → ", badge, method, url)
-      table.insert(out, string.format("%s%s (%dms)", prefix, status_text, math.floor((req.duration or 0) + 0.5)))
+      table.insert(out, string.format("%s%s (%dms)", prefix, status_text, req.duration_ms or 0))
       hl(highlights, out, 0, #badge, og)
       hl(highlights, out, #badge + 1, #badge + 1 + #method, "Keyword")
       hl(highlights, out, #prefix, #prefix + #status_text, og)
@@ -226,7 +236,7 @@ function M.render(decoded, cmd_str)
       hl_line(highlights, out, "Statement")
       append_headers_table(out, truncations, highlights, rreq.headers)
       table.insert(out, "")
-      if rreq.body then
+      if rreq.body and rreq.body ~= "" then
         table.insert(out, "Body")
         hl_line(highlights, out, "Statement")
         body_block(out, highlights, rreq.body, rreq.headers)
@@ -245,25 +255,11 @@ function M.render(decoded, cmd_str)
       body_block(out, highlights, resp.body, resp.headers)
       table.insert(out, "")
 
-      if download_path then
-        table.insert(out, "▸ Download")
-        hl_line(highlights, out, "Title")
-        table.insert(out, "")
-        table.insert(out, "  " .. download_path)
+      if req.script_error then
+        table.insert(out, "  ⚠ post-request script error: " .. tostring(req.script_error))
+        hl_line(highlights, out, "DiagnosticWarn")
         table.insert(out, "")
       end
-    end
-
-    if test_results and #test_results > 0 then
-      table.insert(out, "▸ Test Results")
-      hl_line(highlights, out, "Title")
-      table.insert(out, "")
-      for _, t in ipairs(test_results) do
-        local pass = t.status == "SUCCESS"
-        table.insert(out, string.format("  %s %s", test_mark(t.status), t.message or t.status or ""))
-        hl_line(highlights, out, pass and "DiagnosticOk" or "DiagnosticError")
-      end
-      table.insert(out, "")
     end
   end
 

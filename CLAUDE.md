@@ -5,14 +5,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 `httpfly.nvim` is a Neovim plugin that provides a thin UI layer over the
-[httpyac](https://httpyac.github.io/) CLI for executing JetBrains-style
-`.http` files (`###` request separators, `{{variables}}`, `> {% ... %}`
-pre/post-request scripts, `http-client.env.json` environments). httpyac does
-all the heavy lifting — sending requests, variable substitution, script
-execution, environment merging. This plugin's job is: discover/select the
-environment, shell out to `httpyac send --json --no-color`, and turn its JSON
-output into readable markdown in a split, with a floating-window preview for
-values too long to fit in a markdown table cell.
+[httpfly](https://github.com/cristianradulescu/httpfly) CLI for executing
+JetBrains-style `.http` files (`###` request separators, `{{variables}}`,
+`< {% ... %}`/`> {% ... %}` Lua pre/post-request scripts, `httpfly.env.json`
+environments). httpfly does all the heavy lifting — sending requests,
+variable substitution, script execution, environment merging, persisting
+`client.global` variables across separate invocations. This plugin's job
+is: discover/select the environment, shell out to `httpfly run -json`, and
+turn its JSON output into readable markdown in a split, with a floating-
+window preview for values too long to fit in a markdown table cell.
 
 There is no build step and no test suite — this is a small, dependency-free
 Lua plugin. Verification is done by exercising modules directly through
@@ -20,8 +21,18 @@ Lua plugin. Verification is done by exercising modules directly through
 
 ## Runtime dependency
 
-The plugin assumes `httpyac` is installed and on `$PATH` (`npm i -g httpyac`).
-The binary name is configurable via `require("httpfly").setup({ cmd = ... })`.
+The plugin assumes `httpfly` is installed and on `$PATH` (`go install
+github.com/cristianradulescu/httpfly/cmd/httpfly@latest`, or build it from
+source — see httpfly's own `doc/installation.md`). The binary name is
+configurable via `require("httpfly").setup({ cmd = ... })`.
+
+httpfly resolves both `httpfly.env.json` and `.httpfly/state.json` relative
+to its own process's **current working directory only** — there's no
+upward directory search the way some other HTTP-file tools do. This plugin
+always invokes it with `cwd` set to the `.http` file's own directory
+(`runner.lua`'s `resolve_cwd()`), so `httpfly.env.json` has to sit right
+next to whichever `.http` files use it; a project with `.http` files nested
+below where the env file lives needs its own copy per directory.
 
 ## Architecture
 
@@ -30,219 +41,84 @@ Request flow, end to end:
 1. `plugin/httpfly.lua` registers `:HttpEnv`, `:HttpEnvVars`, `:HttpSend`,
    `:HttpSendAll`, `:HttpSessionClear` on load (guarded by
    `vim.g.loaded_httpfly`).
-2. `lua/httpfly/env.lua` resolves which httpyac environment (a key in
-   `http-client.env.json`) applies to the current buffer. It walks upward
-   from the buffer's directory to find the nearest `http-client.env.json`
-   (`vim.fs.find(..., { upward = true })`) and keeps the selected environment
-   name in a module-local table **keyed by that env file's path**, not
-   globally — so switching directories/projects doesn't bleed state.
-   `:HttpEnv` with no argument opens a `vim.ui.select` picker over
-   `read_env_names()`'s result, which unions top-level keys from **both**
-   the shared file and its private counterpart (`private_file_for()`),
-   deduped, `$`-prefixed keys excluded. Originally only scanned the shared
-   file; fixed after confirming against a real httpyac binary that it
-   resolves an environment defined *only* in the private file just fine
-   (its own `Fd()`/env-file loader unions both files' keys the same way),
-   so a picker sourced from the shared file alone was hiding legitimate
-   environments — caught via a real `"private"`-only environment added to
-   `doc/examples/http-client.private.env.json`. `:HttpEnv <name>` sets it
-   directly, without going through the picker/`read_env_names()` at all
-   (and without validating the name exists anywhere, same as before this
-   fix).
+2. `lua/httpfly/env.lua` resolves which httpfly environment (a key under
+   `httpfly.env.json`'s `"environments"` object) applies to the current
+   buffer. Because httpfly itself does no upward search (see above),
+   `env_file_for_buf()` just checks for `httpfly.env.json` directly in the
+   buffer's own directory — no `vim.fs.find(upward = true)` walk — and
+   keeps the selected environment name in a module-local table **keyed by
+   that env file's path**, not globally, so switching directories/projects
+   doesn't bleed state. `:HttpEnv` with no argument opens a `vim.ui.select`
+   picker over `read_env_names()`'s result (the `environments` object's
+   keys — `"shared"` isn't itself selectable, same as httpfly's own CLI
+   rejecting `-env shared`). `:HttpEnv <name>` sets it directly, without
+   going through the picker/`read_env_names()` at all (and without
+   validating the name exists anywhere).
    - `env.status(bufnr)` returns the winbar text; `ftplugin/http.lua` wires
      it up as a **live** winbar expression
      (`%{%v:lua.require('httpfly.env').status()%}`), not a value set once
      at buffer-load time, so it stays correct after `:HttpEnv` changes the
      selection without needing to manually redraw anything.
    - `env.vars(bufnr)` / `env.show_vars(bufnr)` (bound to `:HttpEnvVars`)
-     replicate httpyac's own merge order so the values shown match what a
-     real send actually uses: shared file's `"$shared"` → shared file's
-     selected env → private file's `"$shared"` → private file's selected
-     env → session vars (`session.load()`, see below), each layer
-     overwriting the last. Getting `runner.lua`'s actual `httpyac send`
-     invocation to match this display took a second fix: httpyac does
-     **not** auto-merge `"$shared"` into whatever `--env` you pass — traced
-     into its source (`Vd(t,e)`, the function backing `-e/--env`) and
-     confirmed empirically that `--env local` alone never sees `$shared`
-     at all, only `--env '$shared' local` (multiple `--env` values, in
-     that order so the named environment overrides shared on conflict)
-     does. Passing an `--env` value with no matching key in the file is
-     silently ignored (also confirmed), so `build_cmd()` always adds
-     `--env $shared <selected>` whenever an environment is selected,
-     unconditionally — no need to check whether the file actually has a
-     `$shared` key first. Without this, `:HttpEnvVars` would show a
-     `$shared` value as if it were in effect while an actual send threw a
-     `ReferenceError` for it — caught via `doc/examples/5_environments.http`
-     failing despite looking correct. The private file's path is derived
-     from
-     `config.options.env_file` by suffix substitution
-     (`http-client.env.json` -> `http-client.private.env.json`), not a
-     separate config option. `env.vars()` returns `vars, name, session_keys,
-     env_keys` — the latter two are the set of keys present in the session
-     and the set already present from the env file(s) alone (before the
-     session was applied), so `show_vars()` can tell "session added a new
-     var" (`[session]`) apart from "session overrode an existing env var"
-     (`[overridden by session]`) and highlight those suffixes
-     (`WarningMsg`) via an extmark namespace on the floating window's
-     scratch buffer.
-3. `lua/httpfly/runner.lua` builds the httpyac command
-   (`httpyac send <file> --json --no-color [--line N | --all] [--env E]`)
-   and runs it with `vim.system`. It always requests `--json` output — the
-   plain-text renderer is never parsed. The `<file>` argument is always the
-   buffer's absolute path, but the process `cwd` (`resolve_cwd()`) is the
-   **env file's directory**, not the `.http` file's own directory: httpyac
-   resolves `http-client(.private).env.json` (and `process.cwd()` inside
-   scripts) relative to its process cwd, not relative to the file being
-   sent, so a request nested below the env file (e.g. `v2/request.http`
-   with the env file at the project root) would silently lose all its
-   variables if cwd were the request's own directory. Falls back to the
-   file's own directory only when no env file was found for the buffer. The
-   exact command (with a `cd` to that same cwd, plus the `HTTPYAC_PLUGIN`
-   env var below) is rendered into the output via
-   `format.render(stdout, cmd_str)` so it's directly copy-pasteable for
-   debugging.
-   - **Cross-invocation variable persistence** (`lua/httpfly/session.lua`,
-     `httpyac-plugin/httpfly.js`): `client.global.set(...)` in an
-     httpyac script only lives for the duration of one `httpyac` process by
-     default, so a variable set by request A's script (e.g. an MFA token)
-     is invisible to request B if they're sent separately via two
-     `:HttpSend` calls — confirmed empirically against a real httpyac
-     binary. An earlier approach asked users to have each script
-     explicitly persist its own variables via `require("fs")`; that was
-     rejected as not scaling to a large existing collection of `.http`
-     files, since it required editing every one of them.
-     The current approach needs **zero changes to any `.http` file or
-     script**, discovered by reading httpyac's own source
-     (`registerPlugins`/`configureHooks`, `models/sessionStore.d.ts`):
-     httpyac already keeps `client.global` state in an in-memory
-     `userSessionStore` singleton for the lifetime of one process — that's
-     the actual mechanism `--all` relies on to share state across requests
-     in a single run. A project can register a `configureHooks(api)`
-     function (via a local `.httpyac.js`, or via the `HTTPYAC_PLUGIN` env
-     var pointing at any JS module — httpyac merges both, they don't
-     conflict), and `api.sessionStore` is that same singleton. So
-     `httpyac-plugin/httpfly.js` (loaded via `HTTPYAC_PLUGIN`, set
-     by `runner.lua` on every `vim.system` call, resolved from this
-     plugin's own install path via `session.plugin_path()` using
-     `debug.getinfo` — `:p`-forced to absolute, since a relative
-     runtimepath entry, e.g. a test harness's `set rtp+=.`, would otherwise
-     leak a relative path into the child httpyac process's env, which then
-     resolves against the wrong directory and silently fails to load)
-     mirrors the store to `.httpfly/session.json`: load it into the store
-     on startup, write it back out on every `sessionStore.onSessionChanged()`.
-     httpyac's own `{{var}}` resolution and `client.global` API do the
-     rest, completely unmodified — this was verified against a real
-     httpyac binary across two genuinely separate processes before being
-     adopted. Only sessions whose `type` ends in `global_cache` are
-     persisted (empirically determined — `sessionStore.userSessions` also
-     holds transient per-connection sessions with live sockets that aren't
-     JSON-serializable and would throw on a circular-structure error if
-     included).
-     Where that file lives is **not** tied to `resolve_cwd()` (the env
-     file's directory that httpyac's own process cwd uses, needed so it
-     can find `http-client.env.json`) — those two concerns were originally
-     conflated, which meant a `.http` file with no env file anywhere above
-     it (e.g. `doc/examples/*.http`, which hardcode `localhost:8080`
-     directly) got its own separate `.httpfly/` next to itself, splitting
-     state across two directories instead of the one `.gitignore` entry
-     was supposed to cover. Decoupled via `HTTPFLY_SESSION_FILE`, an env
-     var `httpfly.js` checks before falling back to its own
-     `process.cwd()`-relative default; `runner.lua` always sets it to
-     `session.file_for_cwd(vim.fn.getcwd())`, matching where
-     `history.lua` already put `.httpfly/history/`. `env.lua`'s
-     `session.load(vim.fn.getcwd())` (same file-parsing/filtering logic,
-     read-only, lets `:HttpEnvVars` show these values merged in) and
-     `runner.lua`'s `M.session_clear()` (`session.clear(vim.fn.getcwd())`)
-     were updated to match.
-   - **`@download`** (same `httpyac-plugin/httpfly.js` file — httpyac only
-     supports one `HTTPYAC_PLUGIN` path at a time, so both features live
-     in one file, as two separate `register*(api)` functions both called
-     from `configureHooks`; started life as a project-local
-     `doc/examples/httpyac.config.js` before being generalized in here).
-     `client.global.set`'s "response.body is lossy for binary content"
-     problem (see `format/shared.lua`'s `is_binary` bullet below)
-     independently confirmed a second time here: `response.body` inside a
-     `> {% ... %}` script is *always* decoded to a JS string somewhere in
-     httpyac's own response pipeline before a script ever sees it (JSON →
-     already-parsed object, HTML/XML → a DOM `Document`, otherwise → a
-     string) — but `response.rawBody`, a genuine undecoded `Buffer`, does
-     exist one step earlier in the pipeline, in the `onResponse` hook,
-     just not by the time an inline script runs. That's the only reason
-     this needs to be a plugin (`api.hooks.onResponse.addHook(...)`)
-     rather than something expressible inline in a `.http` file.
-     `context.httpRegion.metaData.download` is `true` for a bare
-     `# @download`, or the annotation's string value for
-     `# @download some-name.ext` (confirmed empirically) — `pickFilename()`
-     only runs for the `true` case; a string value is used as the filename
-     directly. `pickFilename()` mirrors browser download-filename
-     priority: `Content-Disposition`'s `filename=`/`filename*=UTF-8''...`
-     (regex-parsed) → the URL's last path segment, only if it contains a
-     `.` (a bare route like `.../image/png` doesn't count) → a
-     content-type-guessed extension as the final fallback. Saved under
-     `HTTPFLY_DOWNLOAD_DIR` (same env-var-override pattern as
-     `HTTPFLY_SESSION_FILE`, set by `runner.lua` to
-     `session.download_dir_for_cwd(vim.fn.getcwd())`, i.e.
-     `.httpfly/downloads/`), not wherever httpyac's own process cwd
-     happens to be, for the same reason session storage needed that
-     decoupling.
-     **Path traversal**: the resolved filename (whichever tier of
-     `pickFilename()` produced it, or the `@download` value directly) is
-     treated as untrusted — it can come straight from the HTTP response
-     (`Content-Disposition`/the URL) via `pickFilename()`, which reflects
-     whatever a malicious or compromised server chooses to send,
-     independent of how trusted the `.http` file itself is. Flagged by
-     automated security review, confirmed exploitable, and fixed:
-     `path.basename(requested)` alone is *not* sufficient — verified with
-     `node` directly that `path.basename("..")` returns `".."` unchanged
-     (it only strips components after the last `/`, and a bare `..` has
-     none), so `path.join(dir, "..")` still escapes to the parent
-     directory. The actual guard is `path.resolve(dest).startsWith(
-     path.resolve(dir) + path.sep)`, checked *after* `path.basename()`,
-     which throws rather than writing if it fails — confirmed this
-     specific bare-`".."` case (via a real `Content-Disposition:
-     filename=".."` response) throws `httpfly: refusing to save download
-     outside ...` and writes nothing, while a `../../pwned.txt`-style
-     value (which `path.basename()` alone already neutralizes) still
-     lands safely inside the download directory as `pwned.txt`. Applied
-     once, at the single point where `dest` is computed — not duplicated
-     across each `pickFilename()` tier — since every candidate necessarily
-     flows through that one write site before `fs.writeFileSync` runs.
-     **Surfacing the saved path in the rendered output** (a dedicated
-     "Download" section, right after the response body) needed its own
-     workaround: `httpyac.js`'s `onResponse` hook runs at the httpyac-
-     library level, entirely outside anything a `.http` file's own script
-     can see, so there's no existing channel for it to hand information
-     to `--json`'s output at all. Tried the obvious thing first and
-     confirmed empirically that it doesn't work: setting an arbitrary
-     extra field directly on `response` (e.g. `response.httpflyDownloadPath
-     = dest`) does **not** survive `--json` serialization — httpyac
-     clearly serializes a fixed, known shape rather than the object as
-     given, since the extra field silently disappears. What *does*
-     survive: pushing onto `context.httpRegion.testResults` (a plain
-     mutable array — confirmed the same way, by pushing a fake `{message,
-     status: "SUCCESS"}` and finding it present in the `--json` output).
-     So the hook pushes a synthetic testResult whose `message` is
-     `DOWNLOAD_MARKER + dest` (`DOWNLOAD_MARKER = 'httpfly:download:'`,
-     duplicated as a literal in both `httpfly.js` and
-     `format/shared.lua`'s `M.DOWNLOAD_MARKER` — no shared source between
-     JS and Lua, so this has to be kept in sync by hand across that
-     boundary if it's ever changed). `shared.extract_download(test_results)`
-     scans a request's `testResults` for that prefix, returning the
-     extracted path (or `nil`) plus a **filtered** copy of `testResults`
-     with the marker entry removed — both renderers call this once per
-     request, insert a "Download"/"▸ Download" section using the
-     extracted path immediately after rendering the response body (only
-     when non-nil), and use the *filtered* list (not the original
-     `req.testResults`) for the "Test Results" section, so the synthetic
-     entry never masquerades as a real assertion there. Confirmed a
-     request with `@download` *and* real `client.test(...)` calls renders
-     both sections correctly, with only the genuine assertions showing
-     under "Test Results".
+     replicate httpfly's own merge order so the values shown match what a
+     real send actually uses: `httpfly.env.json`'s `"shared"` → the
+     selected environment's own entries → persisted `.httpfly/state.json`
+     (`session.load()`, see below), each layer overwriting the last.
+     Unlike an earlier httpyac-backed version of this plugin, there's no
+     separate private-env-file split and no CLI quirk where `-env` doesn't
+     auto-merge a shared section — httpfly's own `internal/env.Load`
+     already merges `"shared"` into whichever environment is selected, so
+     `runner.lua`'s `build_cmd()` just passes `-env <name>` once, nothing
+     more.
+3. `lua/httpfly/runner.lua` builds the httpfly command
+   (`httpfly run -json [-env E] [-name X] <file>`) and runs it with
+   `vim.system`, with `cwd` set to the `.http` file's own directory
+   (`resolve_cwd()`) — the only directory httpfly itself will look in for
+   `httpfly.env.json`/`.httpfly/state.json`. Unlike the previous
+   httpyac-backed version, no extra environment variables need to be
+   injected into the child process at all: httpfly persists
+   `client.global` state natively (see below), so there's no bundled
+   plugin/hook file to point at via an env var, and no `cd ...&&` prefix
+   is needed in the rendered command string either — `vim.system`'s own
+   `cwd` option is sufficient.
+   - **`-name` instead of `--line N`**: httpfly has no line-based "send
+     the request under the cursor" flag — `-name X` (matching the request's
+     mandatory `# @name X`) is the only way to restrict a run to one
+     request. `M.send_current()` therefore has to find the enclosing
+     request's name itself: `find_enclosing_name()` mirrors httpfly's own
+     parser, which splits the file on lines that are exactly `###` (the
+     segment before the first `###` is the prelude and never carries a
+     `@name`, since `@name` is request-only and mandatory on every real
+     request). It locates which block contains the cursor line, then scans
+     that block for a `# @name X` line. `vim.notify`s a warning rather than
+     sending anything if no name is found (cursor sitting in the prelude,
+     or an `.http` file that hasn't declared a name yet).
+   - **Cross-invocation variable persistence** is native to httpfly —
+     `client.global:set(...)` in a Lua script writes straight through to
+     `.httpfly/state.json` (`internal/state` on httpfly's side), keyed by
+     directory and environment name, immediately on every `:set`, not just
+     at the end of a run. This plugin doesn't need to do anything to make
+     that work; `lua/httpfly/session.lua` only exists so `:HttpEnvVars` can
+     *read* that same file back (`session.load(dir, env_name)` — a flat
+     `{key: value}` bucket per environment, `""` for no `-env`) to show
+     persisted overrides alongside env-file variables, and so
+     `:HttpSessionClear` can delete it (`session.clear(dir)` — deletes the
+     whole file, same coarse granularity as before; httpfly's per-
+     environment buckets all live in that one file).
+   - **No binary download support**: httpfly has no plugin/hook mechanism
+     at all (unlike httpyac, which this plugin used to extend via an
+     `HTTPYAC_PLUGIN`-loaded JS module for exactly this). There is
+     currently no way to save a genuinely binary response byte-perfect
+     through this plugin — dropped along with the httpyac backend, not
+     reimplemented. `format/markdown.lua`/`format/unicode.lua` have no
+     "Download" section as a result.
 4. `lua/httpfly/format.lua` is a thin dispatcher: it decodes the JSON
    payload (`format/shared.lua`'s `extract_json`, defensive against any
-   stray non-JSON text before the `{` — relevant if `cmd` is ever invoked
-   through something like `npx` that prints notices to stdout), then hands
-   the decoded structure to a renderer module picked by
+   stray non-JSON text before the `[` — relevant if `cmd` is ever invoked
+   through something that prints notices to stdout first). httpfly's
+   `-json` output is a **top-level array** (not `{summary, requests}` the
+   way the previous httpyac backend's was) — `format.lua` just checks the
+   decoded value is a table before handing it to a renderer picked by
    `config.options.output_style` (`"markdown"` → `format/markdown.lua`,
    `"unicode"` → `format/unicode.lua`; unrecognized values fall back to
    markdown). Both renderers take the same `(decoded, cmd_str)` and return
@@ -250,126 +126,59 @@ Request flow, end to end:
    know which one ran — only `config.options.output_style` decides the
    result buffer's `filetype` (`"markdown"`/`"text"`) and the history
    file's extension (`.md`/`.txt`), both set directly in `runner.lua`
-   rather than threaded back through the renderer. `format/shared.lua`
-   holds what's genuinely style-independent: `truncate()` (see below) and
-   `body_lang()` (`Content-Type` → `json`/`xml`/`html`/`text`, used to
-   decide whether to pretty-print via `json.lua` and, in the markdown
-   renderer only, the code fence language tag — the unicode renderer
-   doesn't need a language tag but still needs to know whether to
-   pretty-print). Each renderer still owns its own header/body layout:
-   markdown uses `|---|` pipe tables and ` ``` ` fences; unicode renders an
-   actual box-drawing table (`┌─┬─┐`/`├─┼─┤`/`└─┴─┘`, column widths computed
-   from `vim.fn.strdisplaywidth()` so multi-byte UTF-8 header/value text
-   still aligns correctly) and delimits the body with a plain `─` rule
-   sized to the widest body line instead of a fenced code block — same
-   layout as markdown (tables, request/response sections, a body block),
-   deliberately no markdown syntax. That's the actual point of having two
-   renderers, so the layout logic is deliberately not abstracted further
-   into a shared "table builder".
-   - **Coloring without a filetype hook**: the markdown renderer relies on
-     `filetype = "markdown"` plus whatever the user has for markdown
-     buffers (treesitter, `render-markdown.nvim`) for color. The unicode
-     renderer's `filetype` is plain `"text"` (deliberately, after an
-     earlier attempt at a dedicated `httpfly-result` filetype for
-     `render-markdown.nvim` hooking ran into lazy-loading bootstrap issues
-     that weren't worth chasing further), so it returns a third value from
-     `M.render`: `highlights`, a list of `{line, col_start, col_end,
-     hl_group}` (1-based line, byte columns — matches how truncations are
-     already tracked). `runner.lua` applies these via
-     `vim.api.nvim_buf_add_highlight` in its own namespace
-     (`httpfly_result`), cleared and reapplied on every render since the
-     buffer is reused across sends. Uses only standard groups
-     (`DiagnosticOk/Warn/Error` for status/outcome, `Title`/`Statement` for
-     headings, `Comment` for box-drawing chrome, `Identifier`/`Keyword` for
-     header names/HTTP method) so it adapts to whatever colorscheme is
-     active rather than hardcoding colors. The markdown renderer doesn't
-     return a third value; `runner.lua` treats it as optional
-     (`ipairs(highlights or {})`).
-   - **JSON body syntax highlighting**: `json.lua`'s `pretty(str, tokens)`
-     takes an optional second argument — when given a table, it's filled
-     with one entry per meaningful token (`key`/`string`/`number`/
-     `boolean`/`null`) as the same bracket-scanning pass that produces the
-     indented text also classifies each token it emits: a string is a
-     `key` if, after skipping trailing whitespace, the next character is
-     `:`, otherwise it's a `string` value; the catch-all numeric/keyword
-     branch classifies by comparing the captured text against
-     `"true"`/`"false"`/`"null"`, else assumes `number`. Token positions
-     are `{line = <0-based, within the returned text>, col_start,
-     col_end}` byte offsets — deliberately relative to the pretty-printed
-     output, not the original compact input, so `unicode.lua`'s
-     `body_block` only needs to add its own line offset (where the body
-     text starts within the overall `out` buffer) to place them correctly;
-     no separate reparsing of the already-pretty-printed text is needed.
-     Existing call sites that don't pass `tokens` (markdown renderer's
-     body pretty-printing) are unaffected — token recording is skipped
-     entirely when the argument is nil. Chose this over driving a
-     treesitter JSON parser specifically to avoid depending on that parser
-     being installed at all (the render-markdown.nvim filetype-hooking
-     detour was reason enough to keep this self-contained).
-   - **Binary body guard** (`shared.is_binary`): both renderers' `body_block`
-     check `body:find("\0", 1, true)` before doing anything else with a
-     response body, substituting a `(binary content, N bytes — not
-     shown)`-style placeholder if found. Not just a UX nicety — without it,
-     `history.save()` crashed outright (`E5108`: `vim.fn.writefile()`
-     "Expected a Number or a String, Blob found") for any response whose
-     body happened to contain a NUL byte (found via
-     `doc/examples/9_binary_download.http`, a genuinely binary image
-     response). Root cause: a JSON string containing a NUL byte decodes to a
-     perfectly normal Lua `string` (Lua strings are byte-counted, not
-     NUL-terminated, so embedded NULs are fine on that side) — but once
-     that string crosses into a VimL-facing API call like
-     `vim.fn.writefile()`'s line-list argument, Neovim's own Lua↔VimL
-     bridge silently promotes just that one NUL-containing element to a
-     `Blob` (VimL strings *are* NUL-terminated, so this is how Neovim
-     preserves the bytes across that boundary) — and `writefile()` rejects
-     a `Blob` appearing inside what's supposed to be a list of line
-     strings. A NUL byte is treated as a sufficient (and convenient: exact,
-     no false positives) signal that content isn't real text — valid
-     JSON/XML/HTML/plain text never contains one raw. This only guards
-     *this plugin's own rendering*; it has no bearing on
-     `9_binary_download.http`'s actual download (that succeeds or fails
-     entirely independently, via httpyac's own `onResponse` hook, before
-     this plugin's JSON parsing ever runs).
-   - **Command block line-wrapping**: unicode-only (markdown's is inside a
-     ` ```sh ` fence and left alone). `M.render`'s `format_command(cmd_str)`
-     splits on `" && "` and rejoins with `" && \\\n"` — the generated
-     `cd ... && HTTPYAC_PLUGIN=... httpyac send ...` command is otherwise a
-     single very long line that forces horizontal scroll in the result
-     split. Naive since it doesn't account for `&&` appearing inside a
-     quoted argument, but safe here because `runner.lua` is the only
-     source of `cmd_str` and controls exactly how many `&&`s it contains.
-   Two things the markdown renderer does
-   deliberately, not incidentally (equally applicable to why the unicode
-   renderer exists as an alternative):
-   - **Header table truncation**: values longer than
-     `config.options.max_header_value_len` are truncated with `…` (long
-     bearer tokens etc. otherwise break table rendering in
-     `render-markdown.nvim`, which is why this exists). The full value is
-     recorded in a `line number -> full value` map returned alongside the
-     rendered lines. The unicode renderer truncates the same way (shared
-     `truncate()`) so its box-drawing table doesn't blow out to the width
-     of an untruncated JWT either.
-   - **JSON body pretty-printing**: via `lua/httpfly/json.lua`, a
-     bracket-scanning re-indenter (not `vim.json.decode` + re-encode) so that
-     object key order and string contents are preserved exactly — decoding
-     to a Lua table would lose key order since Lua tables are unordered.
-     Both renderers call it identically.
+   rather than threaded back through the renderer.
+   - **Per-request JSON shape**: each array element is
+     `{name, request:{method,url,proto,headers,body},
+     response:{status_code,headers,body,tls?}, final_url?, script_error?,
+     error?, duration_ms}`. `name` is always present (httpfly makes
+     `@name` mandatory on every request, so there's no `fileName` fallback
+     to fall back to the way the old httpyac backend needed). A request
+     that failed to *send* (DNS failure, connection refused, ...) has
+     `error` instead of `response` — both renderers explicitly render an
+     "Error"/"▸ Error" section for this now, since silently rendering
+     nothing when there's no response object would otherwise hide every
+     transport failure. `script_error` (a post-request script that
+     errored) can coexist with a present `response` — rendered as its own
+     flagged line right after the response body, matching httpfly's own
+     docs ("coexists with `response`, unlike `error`").
+   - **No test-assertion output**: httpfly has no `client.test(...)`-style
+     API and so no `testResults` field in its JSON at all — the "Test
+     Results" section that existed under the httpyac backend has been
+     removed from both renderers, not repurposed. If httpfly ever grows
+     assertions, this is where that rendering would come back.
+   - `format/shared.lua` holds what's genuinely style-independent:
+     `truncate()`, `status_category()`/`status_badge()`, `is_binary()`,
+     `body_lang()` — unchanged from the httpyac backend, since they only
+     depend on generic HTTP concepts (status codes, headers, a body
+     string), not anything httpyac- or httpfly-specific.
+   - **Binary body guard** (`shared.is_binary`): both renderers' body
+     rendering checks `body:find("\0", 1, true)` before doing anything else
+     with a response body, substituting a placeholder if found — otherwise
+     `history.save()` would crash (`E5108`) the moment a NUL-byte-containing
+     body reached `vim.fn.writefile()`'s line-list argument (Neovim's own
+     Lua↔VimL bridge silently promotes a NUL-containing string element to a
+     `Blob` there, which `writefile()` rejects outright). A NUL byte is a
+     sufficient, exact signal that content isn't real text — valid
+     JSON/XML/HTML/plain text never contains one raw.
+   - **JSON body syntax highlighting**: via `lua/httpfly/json.lua`'s
+     `pretty(str, tokens)` — unchanged from before, still style-independent
+     (see the file itself for the token-recording mechanism).
 5. `lua/httpfly/runner.lua` writes the rendered lines into a reused scratch
    buffer (`httpfly://result`, opened in a vertical split), registers the
    truncation map with `lua/httpfly/preview.lua`, and saves the same
-   rendered output to
-   `.httpfly/history/<YYYYMMDD-HHMMSS-microseconds>.{md,txt}` (extension
-   matches `config.options.output_style`) under `vim.fn.getcwd()` via
-   `lua/httpfly/history.lua`. History and the session file (above)
-   deliberately share the single `.httpfly/` directory so a project only
-   needs one `.gitignore` entry to cover both. History is only written
-   when httpyac's JSON parsed successfully — the raw-fallback path (httpyac
-   crashed before emitting JSON) is not saved since there's nothing useful to
-   keep.
+   rendered output to `<dir>/.httpfly/history/<YYYYMMDD-HHMMSS-microseconds>
+   .{md,txt}` (extension matches `config.options.output_style`) via
+   `lua/httpfly/history.lua`, where `<dir>` is the same directory
+   `resolve_cwd()` computed for this send — the `.http` file's own
+   directory, matching where httpfly's own `.httpfly/state.json` lives, so
+   a project only needs one `.gitignore` entry to cover both. History is
+   only written when httpfly's JSON parsed successfully — the raw-fallback
+   path (httpfly crashed before emitting JSON) is not saved since there's
+   nothing useful to keep.
 6. `lua/httpfly/preview.lua` implements the `K` keymap (buffer-local,
    configurable via `preview_keymap`, bound once when the result buffer is
-   created) that opens a floating window with the untruncated value under the
-   cursor, closing on cursor move / buffer leave / insert mode.
+   created) that opens a floating window with the untruncated value under
+   the cursor, closing on cursor move / buffer leave / insert mode.
 
 Filetype/keymap wiring: `ftdetect/http.lua` registers `*.http` as filetype
 `http`; `ftplugin/http.lua` sets the winbar (unconditionally) and the
@@ -385,7 +194,7 @@ module directly through headless Neovim, e.g.:
 ```bash
 nvim --headless -u NONE \
   -c "set rtp+=." \
-  -c "lua local f=io.open('/path/to/sample_httpyac_output.json'); local c=f:read('*a'); f:close(); print(table.concat((require('httpfly.format').render(c)), '\n'))" \
+  -c "lua local f=io.open('/path/to/sample_httpfly_output.json'); local c=f:read('*a'); f:close(); print(table.concat((require('httpfly.format').render(c)), '\n'))" \
   -c "qa"
 ```
 
@@ -403,11 +212,10 @@ nvim --headless -u NONE -c "filetype plugin on" -c "set rtp+=." \
   -c "lua print(vim.bo.filetype)" -c "qa"
 ```
 
-To see httpyac's actual JSON shape (useful when extending `format.lua`),
-run `httpyac send <file> --all --json --no-color` directly and inspect
-`requests[].response.{statusCode,headers,body,request}` and
-`requests[].testResults[]` (present on script assertion failures/errors, with
-no `response` key at all on hard failures like DNS errors).
+To see httpfly's actual JSON shape (useful when extending `format.lua`),
+run `httpfly run -json <file>` directly and inspect the top-level array's
+`request`/`response`/`error`/`script_error` fields (see httpfly's own
+`doc/usage.md#-json`).
 
 ## Style
 

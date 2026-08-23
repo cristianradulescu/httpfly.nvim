@@ -10,7 +10,7 @@ local renderers = {
 
 function M.render(raw_stdout, cmd_str)
   local ok, decoded = pcall(vim.json.decode, shared.extract_json(raw_stdout))
-  if not ok or type(decoded) ~= "table" or not decoded.requests then
+  if not ok or type(decoded) ~= "table" then
     return nil
   end
 

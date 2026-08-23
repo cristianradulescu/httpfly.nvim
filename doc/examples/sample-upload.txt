@@ -1,1 +1,0 @@
-This is a sample text file used by 7_forms.http's file upload example.

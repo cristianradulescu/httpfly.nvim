@@ -5,6 +5,37 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- Switched the backend from [httpyac](https://httpyac.github.io/) to
+  [httpfly](https://github.com/cristianradulescu/httpfly), a purpose-built
+  CLI for this plugin. `cmd` now defaults to `httpfly`; `env_file` now
+  defaults to `httpfly.env.json`.
+- Environment files: a single `httpfly.env.json` (`{"shared": {...},
+  "environments": {...}}`) replaces `http-client.env.json` plus its
+  `.private.` counterpart. httpfly resolves it (and `.httpfly/state.json`)
+  relative to its own process cwd only, with no upward directory search —
+  the file must sit directly alongside the `.http` files that use it.
+- Pre-/post-request scripts (`< {% ... %}` / `> {% ... %}`) are now Lua,
+  not JavaScript — the only language httpfly currently supports.
+- `:HttpSend` (send the request under the cursor) now resolves the
+  enclosing request's `# @name` and calls `httpfly run -name X`, replacing
+  the previous line-based `httpyac send --line N`.
+- Cross-invocation variable persistence (`client.global:set(...)` surviving
+  across separate `:HttpSend` calls) is now native to httpfly
+  (`.httpfly/state.json`) — no bundled plugin hook required.
+
+### Removed
+
+- `@download` support for saving binary responses to disk — httpfly has no
+  plugin/hook mechanism to build this on, unlike httpyac. May return if/when
+  httpfly grows native download support.
+- The "Test Results" rendered section — httpfly has no `client.test(...)`-
+  style assertion API, so there's nothing to render there. Post-request
+  script errors are still surfaced, now as their own flagged line.
+
 ## [0.1.0] - 2026-08-23
 
 Initial release.

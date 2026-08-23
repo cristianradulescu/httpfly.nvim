@@ -1,7 +1,8 @@
 # httpfly.nvim
 
-Send `.http` requests from Neovim using [httpyac](https://httpyac.github.io/)
-and view the response as readable markdown.
+Send `.http` requests from Neovim using
+[httpfly](https://github.com/cristianradulescu/httpfly) and view the
+response as readable markdown.
 
 ![httpfly.nvim showing a request file next to the rendered response](screenshot.png)
 
@@ -11,54 +12,45 @@ and view the response as readable markdown.
 ## Scope
 
 This plugin does **not** implement request execution, variables, or
-scripting itself — [httpyac](https://httpyac.github.io/) does that. This
-plugin just wires it into Neovim:
+scripting itself — [httpfly](https://github.com/cristianradulescu/httpfly)
+does that. This plugin just wires it into Neovim:
 
-- discovers/selects the httpyac environment (`http-client.env.json`) for the
+- discovers/selects the httpfly environment (`httpfly.env.json`) for the
   current file
-- runs `httpyac send` on the request under your cursor (or the whole file)
+- runs `httpfly run` on the request under your cursor (or the whole file)
 - formats the JSON result as markdown (request/response headers, bodies
   pretty-printed when JSON, status line) in a split
 - lets you preview values that got truncated in header tables (e.g. long
   bearer tokens) in a floating window
 - saves a copy of every result under `.httpfly/history/`
 
-If you need JetBrains HTTP Client syntax support (`###` separators,
-`{{variables}}`, `> {% ... %}` pre/post-request scripts,
-`http-client.private.env.json`), that comes from httpyac — this plugin
+If you need JetBrains HTTP Client-style syntax (`###` separators,
+`{{variables}}`, `< {% ... %}`/`> {% ... %}` Lua pre/post-request scripts,
+`httpfly.env.json` environments), that comes from httpfly — this plugin
 doesn't reimplement or restrict any of it.
 
 See `doc/examples/` for runnable `.http` files: `1_basic.http` (plain
 GET/POST), `2_scripting.http` (pre-/post-request scripting, including a
-login → token → authenticated-request chain), `3_global_headers.http`
-(a `{{@request ... }}` block applying a header, e.g. a custom User-Agent,
-to every request in the file), `4_debugging.http` (using
-`client.test(...)` to dump values into the rendered output, since
-`console.log` is silently dropped — see "Scripting notes" below), and
-`5_environments.http` (uses `{{base_url}}`/`{{client_name}}` from the
-`http-client.env.json` in that same directory — pick an environment with
-`:HttpEnv` first), `6_shell_auth.http` (a pre-request script shelling out
-to `generate-token.sh` and using its stdout as the request's token — for
-auth flows too complex to reimplement inline), `7_forms.http`
-(`application/x-www-form-urlencoded`, `multipart/form-data`, and a
-multipart file upload via `< ./path`), `8_save_response.http` (a
-post-request script saving a JSON/text response body to `/tmp` for its
-own sake — a snapshot/fixture, not a file the server means for you to
-download — including a note on why this technique doesn't work reliably
-for genuinely binary content), and `9_binary_download.http` (the standard
-way to download a file — byte-perfect, including binary content — via
-`# @download`, saved under `.httpfly/downloads/`; see that file's
-comments and "Downloading files" below). They hit a local httpbin
-instance — run `make httpbin-up` first (requires Docker), `make
-httpbin-down` when done.
+login → token → authenticated-request chain), `3_environments.http` (uses
+`{{base_url}}`/`{{client_name}}` from the `httpfly.env.json` in that same
+directory — pick an environment with `:HttpEnv` first), `4_shell_auth.http`
+(a pre-request script shelling out to `generate-token.sh` and using its
+stdout as the request's token — for auth flows too complex to reimplement
+inline), `5_forms.http` (`application/x-www-form-urlencoded` and
+`multipart/form-data`), and `6_save_response.http` (a post-request script
+saving a JSON/text response body to `/tmp` for its own sake — a
+snapshot/fixture, not a file the server means for you to download). They
+hit a local httpbin instance — run `make httpbin-up` first (requires
+Docker), `make httpbin-down` when done.
 
 ## Requirements
 
 - Neovim 0.10+
-- [httpyac](https://httpyac.github.io/) on your `$PATH`:
+- [httpfly](https://github.com/cristianradulescu/httpfly) on your `$PATH`:
   ```sh
-  npm install -g httpyac
+  go install github.com/cristianradulescu/httpfly/cmd/httpfly@latest
   ```
+  (or build it from source — see httpfly's own `doc/installation.md`)
 
 ## Setup
 
@@ -77,8 +69,8 @@ required — all options have defaults — but it's the way to override them:
 
 ```lua
 require("httpfly").setup({
-  cmd = "httpyac",              -- httpyac binary/command to run
-  env_file = "http-client.env.json", -- environment file name to look for
+  cmd = "httpfly",               -- httpfly binary/command to run
+  env_file = "httpfly.env.json", -- environment file name to look for
   keymaps = true,                -- set the default <leader>h* keymaps below
   max_header_value_len = 100,    -- header table cell truncation length
   preview_keymap = "K",          -- keymap to preview a truncated value
@@ -92,12 +84,12 @@ Open a `.http` file and:
 
 | Command         | Keymap        | Does                                                |
 |-----------------|---------------|------------------------------------------------------|
-| `:HttpEnv`      | `<leader>he`  | Pick the httpyac environment for this file            |
+| `:HttpEnv`      | `<leader>he`  | Pick the httpfly environment for this file            |
 | `:HttpEnv dev`  | —             | Set the environment directly, without the picker      |
 | `:HttpEnvVars`  | `<leader>hv`  | Show the selected environment's merged variables       |
 | `:HttpSend`     | `<leader>hs`  | Send the request under the cursor                     |
 | `:HttpSendAll`  | `<leader>ha`  | Send every request in the file                        |
-| `:HttpSessionClear` | `<leader>hc` | Clear the session file (see below)                |
+| `:HttpSessionClear` | `<leader>hc` | Clear persisted `client.global` state (see below) |
 
 The response opens in a vertical split as markdown (`filetype = "markdown"`).
 Set `output_style = "unicode"` for the same layout (headers as a table,
@@ -118,110 +110,79 @@ The currently selected environment for the file is shown in the winbar
 
 ### Environments
 
-`:HttpEnv` looks for the nearest `http-client.env.json` by walking up from
-the current file's directory, and lists its (and its private file's, see
-below — an environment defined only there still shows up) top-level keys
-as choices — the same file format used by IntelliJ/WebStorm's HTTP Client,
-so an existing one works as-is:
+`:HttpEnv` looks for `httpfly.env.json` directly in the current file's own
+directory (httpfly resolves it relative to its own process cwd, with no
+upward search — see "Directory resolution" below), and lists the keys under
+its `"environments"` object as choices:
 
 ```json
 {
-  "dev": { "base_url": "https://dev.example.com" },
-  "prod": { "base_url": "https://api.example.com" }
+  "shared": {
+    "client_name": "my-app"
+  },
+  "environments": {
+    "dev": { "base_url": "https://dev.example.com" },
+    "prod": { "base_url": "https://api.example.com" }
+  }
 }
 ```
 
-Secrets go in a sibling `http-client.private.env.json` (gitignore it);
-httpyac merges both by environment name automatically, with the private
-file's values winning on conflicts. A top-level `"$shared"` key in either
-file is merged into every environment, also matching the IntelliJ format.
+`"shared"` is merged as defaults into every environment (overridden by that
+environment's own values on conflict) — it's not itself a selectable
+environment. Unlike some other HTTP-file tools, there's no separate
+"private" env file split for secrets; if you need to keep values out of
+version control, `.gitignore` the whole `httpfly.env.json` (or a
+project-specific copy of it).
 
 The selected environment is remembered per env-file, so different projects
 don't interfere with each other. Run `:HttpEnvVars` any time to see exactly
-which values are in effect for the selected environment (shared + env,
-shared file then private file, then session variables — see below —
-overriding those, the same order httpyac itself applies when sending
-requests). Variables added or overridden by the session are marked
-`[session]` / `[overridden by session]`.
+which values are in effect for the selected environment (shared + env, then
+persisted `client.global` state — see below — overriding those, the same
+order httpfly itself applies when sending requests). Variables added or
+overridden by persisted state are marked `[session]` / `[overridden by
+session]`.
+
+### Directory resolution
+
+httpfly resolves `httpfly.env.json` and `.httpfly/state.json` relative to
+its own process's **current working directory only** — there's no upward
+directory search. This plugin always runs it with `cwd` set to the `.http`
+file's own directory, so `httpfly.env.json` needs to live right next to
+whichever `.http` files use it (a project with `.http` files nested below
+where the env file lives needs its own copy per directory).
 
 ### Chaining requests across separate sends
 
-`client.global.set(...)` in a script only lives for the duration of one
-`httpyac` process by default, so a variable set by one request's script
-would normally be gone by the time you `:HttpSend` a later request as a
-separate invocation — even though it works fine within a single
-`:HttpSendAll` (one process for the whole file). This plugin makes that
-"just work" automatically: it points httpyac at a small bundled plugin
-(`httpyac-plugin/httpfly.js`, loaded via the `HTTPYAC_PLUGIN` env var on
-every send) that mirrors httpyac's own global-variable cache to
-`.httpfly/session.json` under your current working directory — the same
-place `.httpfly/history/` lives (see below), regardless of where your
-`.http` file or env file are. No changes to your `.http` files or scripts
-are needed — write `client.global.set(...)` exactly as you already do; it
-now survives across separate `:HttpSend` calls, and `{{your_var}}`
-resolves correctly in later requests without ever touching
-`http-client.env.json`.
-
-Run `:HttpSessionClear` to delete the session file (e.g. once a token
-expires).
-
-### Downloading files
-
-`# @download` on a request saves its raw response body to disk,
-byte-perfect — including genuinely binary content (images, PDFs, zips,
-...), which scripting it yourself with `require("fs")` and
-`response.body` can't do reliably (`response.body` is decoded to a JS
-string somewhere in httpyac's own pipeline before any script ever sees
-it, which loses information for arbitrary bytes; see
-`doc/examples/8_save_response.http` vs `9_binary_download.http`). This is the
-same bundled plugin as session persistence above
-(`httpyac-plugin/httpfly.js`) — it hooks into httpyac's `onResponse`
-event, one step before that lossy conversion happens, where the real
-undecoded bytes are still available.
-
-Bare `# @download` picks a filename automatically, in the same priority
-order browsers use: `Content-Disposition`'s filename, then the URL's last
-path segment if it looks like a real filename, then a
-content-type-guessed extension. `# @download some-name.ext` overrides
-that with an explicit filename. Either way, the file is saved under
-`.httpfly/downloads/` in your current working directory — the same place
-`.httpfly/history/` and `.httpfly/session.json` live, so the one
-`.gitignore` entry (see below) still covers everything.
-
-The saved path also shows up as its own "Download" section in the
-rendered output, right after the response body.
+`client.global:set(...)` in a Lua script writes straight through to
+`.httpfly/state.json`, immediately — not just at the end of a run. httpfly
+does this natively, so a value one request's post-request script sets is
+picked up by a later request in the same `:HttpSendAll`, and by any request
+in a later, separate `:HttpSend` — no plugin hook or extra configuration
+needed on this plugin's side. Run `:HttpSessionClear` to delete the state
+file (e.g. once a token expires).
 
 ### Scripting notes
 
-This plugin always runs httpyac with `--json` (that's what lets it render
-the markdown response view), and httpyac's `--json` mode only ever writes a
-single JSON blob to stdout — any `console.log` / `console.info` /
-`console.warn` calls in your `> {% ... %}` scripts are silently dropped,
-not shown anywhere, even though they work fine when running httpyac
-directly without `--json`. There's no way to recover that output through
-this plugin.
-
-If you want a script to leave a visible marker in the rendered output, use
-a test assertion instead — those *do* survive `--json` and are rendered as
-a "Test Results" section:
-
-```js
-> {%
-  client.test("I AM LOGGED", () => true);
-%}
-```
+Scripts are Lua (`< {% ... %}` pre-request, `> {% ... %}` post-request) —
+the only language httpfly currently supports. `response.body` is always the
+raw response text, whatever its `Content-Type`; decode it yourself with
+`json.decode(response.body)` when it's JSON. There's no per-request
+"local variable" API for a pre-request script — the only mutable store a
+script can reach is the persisted `client.global`, so even a value meant to
+be used only within the current request has to go through it.
 
 ### History
 
 Every successfully rendered response is also saved to `.httpfly/history/`
-in your current working directory, named by timestamp
+next to the `.http` file's own directory (the same directory httpfly's own
+`.httpfly/state.json` lives in), named by timestamp
 (`YYYYMMDD-HHMMSS-microseconds.md`).
 
 ### Gitignore
 
-Both the session file and history live under a single `.httpfly/`
+Both the persisted state file and history live under a single `.httpfly/`
 directory next to your env file, so ignoring the whole thing covers both
-(and the session file can hold captured secrets, so this is worth doing):
+(and the state file can hold captured secrets, so this is worth doing):
 
 ```
 .httpfly/

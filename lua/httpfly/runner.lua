@@ -65,25 +65,13 @@ end
 
 local function run(cmd, cwd)
   local buf = open_result_buf()
-  local plugin_env = {
-    HTTPYAC_PLUGIN = session.plugin_path(),
-    HTTPFLY_SESSION_FILE = session.file_for_cwd(vim.fn.getcwd()),
-    HTTPFLY_DOWNLOAD_DIR = session.download_dir_for_cwd(vim.fn.getcwd()),
-  }
-  local cmd_str = string.format(
-    "cd %s && HTTPYAC_PLUGIN=%s HTTPFLY_SESSION_FILE=%s HTTPFLY_DOWNLOAD_DIR=%s %s",
-    shell_quote({ cwd }),
-    shell_quote({ plugin_env.HTTPYAC_PLUGIN }),
-    shell_quote({ plugin_env.HTTPFLY_SESSION_FILE }),
-    shell_quote({ plugin_env.HTTPFLY_DOWNLOAD_DIR }),
-    shell_quote(cmd)
-  )
+  local cmd_str = shell_quote(cmd)
 
   vim.bo[buf].modifiable = true
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "Running: " .. cmd_str, "" })
   vim.bo[buf].modifiable = false
 
-  vim.system(cmd, { cwd = cwd, env = plugin_env, text = true }, function(res)
+  vim.system(cmd, { cwd = cwd, text = true }, function(res)
     vim.schedule(function()
       if not vim.api.nvim_buf_is_valid(buf) then
         return
@@ -97,11 +85,11 @@ local function run(cmd, cwd)
       local history_ext = config.options.output_style == "unicode" and "txt" or "md"
 
       if lines then
-        history.save(lines, history_ext)
+        history.save(lines, history_ext, cwd)
       end
 
       if not lines then
-        -- fall back to raw output (e.g. httpyac crashed before emitting JSON)
+        -- fall back to raw output (e.g. httpfly crashed before emitting JSON)
         filetype = "httpresult"
         lines = { "Command: " .. cmd_str, "" }
         if res.stdout and #res.stdout > 0 then
@@ -131,21 +119,17 @@ local function run(cmd, cwd)
   end)
 end
 
-local function build_cmd(extra)
-  local cmd = { config.options.cmd, "send", "--json", "--no-color" }
-  vim.list_extend(cmd, extra)
+local function build_cmd(file, name_filter)
+  local cmd = { config.options.cmd, "run", "-json" }
 
   local e = env.get(0)
   if e then
-    -- httpyac only merges "$shared" into the selected environment if it's
-    -- explicitly passed as an additional --env value (confirmed against a
-    -- real httpyac binary) -- there's no automatic merge the way env.lua's
-    -- own merge_env() replicates for :HttpEnvVars, so without this,
-    -- {{a_shared_var}} would resolve in the picker's display but throw a
-    -- ReferenceError on an actual send. Harmless to always include: an
-    -- --env value with no matching key in the file is silently ignored.
-    vim.list_extend(cmd, { "--env", "$shared", e })
+    vim.list_extend(cmd, { "-env", e })
   end
+  if name_filter then
+    vim.list_extend(cmd, { "-name", name_filter })
+  end
+  table.insert(cmd, file)
 
   return cmd
 end
@@ -156,7 +140,7 @@ local function require_file()
     vim.notify("httpfly: buffer has no file", vim.log.levels.WARN)
     return nil
   end
-  -- httpyac reads the file from disk, not the buffer, so an unsaved edit
+  -- httpfly reads the file from disk, not the buffer, so an unsaved edit
   -- would otherwise silently send the stale on-disk version.
   if vim.bo.modified then
     vim.cmd("write")
@@ -164,20 +148,50 @@ local function require_file()
   return file
 end
 
--- httpyac resolves http-client.env.json (and its .private. counterpart)
--- relative to its own process cwd, not relative to the .http file being
--- sent. So when the request lives in a subdirectory below the env file
--- (e.g. v2/request.http with http-client.env.json at the project root),
--- running httpyac with cwd = the request's own directory makes it unable
--- to find the env file at all. Use the env file's directory instead, when
--- one was found for this buffer; otherwise fall back to the file's own
--- directory since there's nothing else to prefer.
+-- httpfly resolves httpfly.env.json and .httpfly/state.json relative to
+-- its own process cwd, with no upward search -- so the cwd passed to
+-- vim.system has to be exactly the directory a real `httpfly run` from
+-- there would use. The .http file's own directory is the only sensible
+-- choice, since that's also where env.lua checks for httpfly.env.json.
 local function resolve_cwd(file)
-  local env_file = env.env_file_for_buf(0)
-  if env_file then
-    return vim.fn.fnamemodify(env_file, ":h")
-  end
   return vim.fn.fnamemodify(file, ":h")
+end
+
+-- httpfly's "-name" flag replaces httpyac's line-based "--line N": find
+-- the @name of the request block enclosing the cursor by mirroring
+-- httpfly's own parser, which splits the file on "###" lines (the segment
+-- before the first "###" is the prelude and never carries a @name).
+local function find_enclosing_name(bufnr, cursor_line)
+  local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+
+  local boundaries = { 0 }
+  for i, line in ipairs(lines) do
+    if line:match("^%s*###") then
+      table.insert(boundaries, i)
+    end
+  end
+  table.insert(boundaries, #lines + 1)
+
+  local block_start, block_end
+  for idx = 1, #boundaries - 1 do
+    local start_line = boundaries[idx] + 1
+    local end_line = boundaries[idx + 1] - 1
+    if cursor_line >= start_line and cursor_line <= end_line then
+      block_start, block_end = start_line, end_line
+      break
+    end
+  end
+  if not block_start then
+    return nil
+  end
+
+  for i = block_start, block_end do
+    local name = lines[i] and lines[i]:match("^%s*#%s*@name%s+(.-)%s*$")
+    if name and name ~= "" then
+      return name
+    end
+  end
+  return nil
 end
 
 function M.send_current()
@@ -186,8 +200,13 @@ function M.send_current()
     return
   end
   local line = vim.api.nvim_win_get_cursor(0)[1]
+  local name = find_enclosing_name(0, line)
+  if not name then
+    vim.notify("httpfly: no request (@name) found under cursor", vim.log.levels.WARN)
+    return
+  end
   local cwd = resolve_cwd(file)
-  run(build_cmd({ file, "--line", tostring(line) }), cwd)
+  run(build_cmd(file, name), cwd)
 end
 
 function M.send_all()
@@ -196,11 +215,16 @@ function M.send_all()
     return
   end
   local cwd = resolve_cwd(file)
-  run(build_cmd({ file, "--all" }), cwd)
+  run(build_cmd(file), cwd)
 end
 
 function M.session_clear()
-  if session.clear(vim.fn.getcwd()) then
+  local file = vim.api.nvim_buf_get_name(0)
+  if file == "" then
+    vim.notify("httpfly: buffer has no file", vim.log.levels.WARN)
+    return
+  end
+  if session.clear(resolve_cwd(file)) then
     vim.notify("httpfly: session cleared", vim.log.levels.INFO)
   else
     vim.notify("httpfly: no session file to clear", vim.log.levels.INFO)

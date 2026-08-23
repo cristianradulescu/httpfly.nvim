@@ -1,0 +1,30 @@
+# Environment variables, via the httpfly.env.json sitting next to this
+# file. Run :HttpEnv (or <leader>he) first and pick "local" or "local-ip"
+# -- both point at the same local httpbin container, just via hostname vs
+# IP, to demonstrate actually switching between named environments. Then
+# :HttpSend / :HttpSendAll as usual. Run :HttpEnvVars (<leader>hv) any time
+# to see exactly what {{base_url}} and {{client_name}} currently resolve
+# to for the selected environment.
+#
+# {{base_url}} comes from whichever environment you picked; {{client_name}}
+# comes from "shared", so it's the same value regardless of which
+# environment is selected. Precedence, highest to lowest: a request's own
+# local variable > client.global (persisted, see 2_scripting.http) >
+# the selected environment (shared, overridden by its own entry) > this
+# file's own global (prelude) variable.
+#
+# httpfly.env.json is a single file -- unlike some other HTTP-file tools,
+# there's no separate "private" file split out for secrets. If you need to
+# keep values out of version control, .gitignore the whole file (or a
+# project-specific copy of it) rather than relying on a built-in split.
+#
+# httpfly looks for httpfly.env.json in its own process's cwd only, no
+# upward directory search -- httpfly.nvim always runs it with that cwd set
+# to this .http file's own directory, so the file has to sit right here,
+# next to the .http files that use it.
+#
+# Run `make httpbin-up` from the repo root first (requires Docker).
+
+###
+# @name Get
+GET {{base_url}}/get?client={{client_name}} HTTP/1.1

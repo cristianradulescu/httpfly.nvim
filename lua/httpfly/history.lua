@@ -1,7 +1,7 @@
 local M = {}
 
-function M.save(lines, ext)
-  local dir = vim.fn.getcwd() .. "/.httpfly/history"
+function M.save(lines, ext, cwd)
+  local dir = cwd .. "/.httpfly/history"
   vim.fn.mkdir(dir, "p")
 
   local sec, usec = vim.uv.gettimeofday()

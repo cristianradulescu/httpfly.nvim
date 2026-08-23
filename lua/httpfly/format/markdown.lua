@@ -20,7 +20,7 @@ local function append_headers(out, truncations, headers)
   table.insert(out, "| Header | Value |")
   table.insert(out, "|---|---|")
   for _, k in ipairs(keys) do
-    local display, full = shared.truncate(headers[k])
+    local display, full = shared.truncate(shared.header_value(headers[k]))
     display = display:gsub("|", "\\|")
     table.insert(out, string.format("| `%s` | %s |", k, display))
     if full then
@@ -65,38 +65,50 @@ function M.render(decoded, cmd_str)
     table.insert(out, "")
   end
 
-  local s = decoded.summary or {}
+  local total, failed, script_errors = #decoded, 0, 0
+  for _, req in ipairs(decoded) do
+    if req.error then
+      failed = failed + 1
+    end
+    if req.script_error then
+      script_errors = script_errors + 1
+    end
+  end
   table.insert(
     out,
     string.format(
-      "# httpyac results — %d/%d succeeded, %d failed, %d errored",
-      s.successRequests or 0,
-      s.totalRequests or 0,
-      s.failedRequests or 0,
-      s.erroredRequests or 0
+      "# httpfly results — %d/%d sent, %d failed to send, %d script error(s)",
+      total - failed,
+      total,
+      failed,
+      script_errors
     )
   )
   table.insert(out, "")
 
-  for _, req in ipairs(decoded.requests) do
+  for _, req in ipairs(decoded) do
+    local rreq = req.request or {}
     local resp = req.response
-    local download_path, test_results = shared.extract_download(req.testResults)
-    local title = (req.name and req.name ~= "") and req.name or req.fileName
-    table.insert(out, "## " .. title)
+    table.insert(out, "## " .. req.name)
     table.insert(out, "")
 
+    if req.error then
+      table.insert(out, "### Error")
+      table.insert(out, "")
+      table.insert(out, "`" .. tostring(req.error) .. "`")
+      table.insert(out, "")
+    end
+
     if resp then
-      local rreq = resp.request or {}
       table.insert(
         out,
         string.format(
-          "%s **%s** `%s` → **%s %s** (%dms)",
-          shared.status_badge(resp.statusCode),
+          "%s **%s** `%s` → **%s** (%dms)",
+          shared.status_badge(resp.status_code),
           rreq.method or "?",
           rreq.url or "?",
-          tostring(resp.statusCode or "?"),
-          resp.statusMessage or "",
-          math.floor((req.duration or 0) + 0.5)
+          tostring(resp.status_code or "?"),
+          req.duration_ms or 0
         )
       )
       table.insert(out, "")
@@ -107,7 +119,7 @@ function M.render(decoded, cmd_str)
       table.insert(out, "")
       append_headers(out, truncations, rreq.headers)
       table.insert(out, "")
-      if rreq.body then
+      if rreq.body and rreq.body ~= "" then
         table.insert(out, "**Body**")
         table.insert(out, "")
         vim.list_extend(out, body_block(rreq.body, rreq.headers))
@@ -125,21 +137,10 @@ function M.render(decoded, cmd_str)
       vim.list_extend(out, body_block(resp.body, resp.headers))
       table.insert(out, "")
 
-      if download_path then
-        table.insert(out, "### Download")
-        table.insert(out, "")
-        table.insert(out, "`" .. download_path .. "`")
+      if req.script_error then
+        table.insert(out, string.format("⚠️ **post-request script error:** %s", tostring(req.script_error)))
         table.insert(out, "")
       end
-    end
-
-    if test_results and #test_results > 0 then
-      table.insert(out, "### Test Results")
-      table.insert(out, "")
-      for _, t in ipairs(test_results) do
-        table.insert(out, string.format("- %s %s", shared.test_mark(t.status), t.message or t.status or ""))
-      end
-      table.insert(out, "")
     end
 
     table.insert(out, "---")

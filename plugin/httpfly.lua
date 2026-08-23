@@ -14,20 +14,20 @@ vim.api.nvim_create_user_command("HttpEnv", function(opts)
   end
 end, {
   nargs = "?",
-  desc = "Select or set the httpyac environment for the current .http file",
+  desc = "Select or set the httpfly environment for the current .http file",
 })
 
 vim.api.nvim_create_user_command("HttpSend", function()
   runner.send_current()
-end, { desc = "Send the http request under the cursor via httpyac" })
+end, { desc = "Send the http request under the cursor via httpfly" })
 
 vim.api.nvim_create_user_command("HttpSendAll", function()
   runner.send_all()
-end, { desc = "Send all http requests in the current file via httpyac" })
+end, { desc = "Send all http requests in the current file via httpfly" })
 
 vim.api.nvim_create_user_command("HttpEnvVars", function()
   env.show_vars(0)
-end, { desc = "Show variables of the currently selected httpyac environment" })
+end, { desc = "Show variables of the currently selected httpfly environment" })
 
 vim.api.nvim_create_user_command("HttpSessionClear", function()
   runner.session_clear()

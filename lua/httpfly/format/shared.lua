@@ -2,8 +2,12 @@ local config = require("httpfly.config")
 
 local M = {}
 
+-- httpfly's "-json" output is a top-level array, so the payload starts at
+-- "[", not "{" -- defensive against any stray non-JSON text before it
+-- (e.g. if `cmd` is ever invoked through something like npx that prints
+-- notices to stdout).
 function M.extract_json(text)
-  local start = text:find("{")
+  local start = text:find("[", 1, true)
   if not start then
     return text
   end
@@ -37,12 +41,6 @@ function M.status_category(code)
   end
 end
 
--- pass/fail marker for a testResults entry's status, identical across
--- renderers
-function M.test_mark(status)
-  return status == "SUCCESS" and "✅" or "❌"
-end
-
 local STATUS_BADGE = { ok = "✅", warn = "⚠️", error = "❌" }
 
 -- symbol for a status code's outcome, identical across renderers
@@ -63,30 +61,14 @@ function M.is_binary(text)
   return text:find("\0", 1, true) ~= nil
 end
 
--- kept in sync with httpyac-plugin/httpfly.js's DOWNLOAD_MARKER -- see
--- that file for why a testResult message prefix is the channel used
-M.DOWNLOAD_MARKER = "httpfly:download:"
-
--- pulls the saved-file path (if any) for an "@download" request out of
--- its testResults, returning the path plus a copy of testResults with
--- that synthetic entry removed (so it doesn't also render as a fake
--- test). Safe to call even when test_results is nil/empty.
-function M.extract_download(test_results)
-  if not test_results then
-    return nil, test_results
+-- httpfly's headers are always "name -> array of values" (a header can
+-- legitimately repeat, e.g. Set-Cookie), never a bare string -- joins them
+-- for display/matching purposes
+function M.header_value(v)
+  if type(v) == "table" then
+    return table.concat(v, ", ")
   end
-
-  local download_path
-  local filtered = {}
-  for _, entry in ipairs(test_results) do
-    local message = type(entry) == "table" and entry.message
-    if not download_path and type(message) == "string" and message:sub(1, #M.DOWNLOAD_MARKER) == M.DOWNLOAD_MARKER then
-      download_path = message:sub(#M.DOWNLOAD_MARKER + 1)
-    else
-      table.insert(filtered, entry)
-    end
-  end
-  return download_path, filtered
+  return tostring(v)
 end
 
 function M.body_lang(headers)
@@ -94,6 +76,7 @@ function M.body_lang(headers)
   if not ct then
     return "text"
   end
+  ct = M.header_value(ct)
   if ct:find("json") then
     return "json"
   elseif ct:find("xml") then

@@ -1,0 +1,33 @@
+# Saving a response body to disk yourself, via a post-request script and
+# the preloaded "ioutil" module (same mechanism 4_shell_auth.http uses for
+# "cmd").
+#
+# response.body is always the raw response text in httpfly, regardless of
+# Content-Type -- unlike some other HTTP-file tools, it's never pre-parsed
+# into an object for you. That makes saving a JSON/text response as simple
+# as writing response.body straight to disk; no re-serialization needed.
+#
+# This only works reliably for text content. Genuinely binary content
+# (images, PDFs, zips, ...) isn't covered here -- httpfly has no dedicated
+# download mechanism yet (the equivalent of some other tools' "@download"
+# annotation), so binary responses aren't currently saveable byte-perfect
+# through this plugin.
+#
+# Run `make httpbin-up` from the repo root first (requires Docker).
+
+###
+# @name SaveJsonResponse
+GET http://localhost:8080/get?report=example HTTP/1.1
+
+> {%
+  local ioutil = require("ioutil")
+  ioutil.write_file("/tmp/httpfly-saved-response.json", response.body)
+%}
+
+###
+# @name SaveTextResponse
+GET http://localhost:8080/robots.txt HTTP/1.1
+
+> {%
+  require("ioutil").write_file("/tmp/httpfly-saved-response.txt", response.body)
+%}

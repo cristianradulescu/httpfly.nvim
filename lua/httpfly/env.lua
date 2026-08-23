@@ -6,14 +6,6 @@ local M = {}
 -- env file path -> selected environment name, scoped per project
 local selected = {}
 
-local function find_env_file(start_dir)
-  return vim.fs.find(config.options.env_file, {
-    upward = true,
-    path = start_dir,
-    type = "file",
-  })[1]
-end
-
 local function read_json(path)
   local ok_read, content = pcall(vim.fn.readfile, path)
   if not ok_read then
@@ -26,30 +18,32 @@ local function read_json(path)
   return decoded
 end
 
--- private env file sits next to the shared one, e.g.
--- http-client.env.json -> http-client.private.env.json
-local function private_file_for(env_file)
-  return (env_file:gsub("%.env%.json$", ".private.env.json"))
+-- httpfly resolves httpfly.env.json (and .httpfly/state.json) via its own
+-- process cwd only, no upward search -- so the plugin must check exactly
+-- the directory it will pass to vim.system as cwd (the .http file's own
+-- directory, same as runner.lua's resolve_cwd()), or :HttpEnv could
+-- show/pick an environment a real `httpfly run` from that directory can't
+-- actually see.
+local function dir_for_buf(bufnr)
+  return vim.fn.fnamemodify(vim.api.nvim_buf_get_name(bufnr), ":h")
 end
 
--- environment names from both the shared and private files, unioned --
--- httpyac itself resolves an environment defined only in the private file
--- (confirmed against a real binary), so a picker sourced from the shared
--- file alone would hide private-only environments. "$shared" (and
--- httpyac's other special key, "$default") aren't real, selectable
--- environments -- they're merged into whichever real one you pick (see
--- build_cmd() in runner.lua), so they're excluded here.
+local function env_file_path(dir)
+  return dir .. "/" .. config.options.env_file
+end
+
+-- environment names declared under the file's "environments" key; "shared"
+-- isn't itself a selectable environment, same as httpfly's own CLI ("-env
+-- shared" is an error there)
 local function read_env_names(env_file)
+  local decoded = read_json(env_file)
+  local environments = decoded.environments
+  if type(environments) ~= "table" then
+    return {}
+  end
   local names = {}
-  local seen = {}
-  local private_file = private_file_for(env_file)
-  for _, path in ipairs({ env_file, private_file }) do
-    for k in pairs(read_json(path)) do
-      if k:sub(1, 1) ~= "$" and not seen[k] then
-        seen[k] = true
-        table.insert(names, k)
-      end
-    end
+  for k in pairs(environments) do
+    table.insert(names, k)
   end
   table.sort(names)
   return names
@@ -59,13 +53,14 @@ local function merge_env(vars, decoded, name)
   if type(decoded) ~= "table" then
     return
   end
-  local shared = decoded["$shared"]
+  local shared = decoded.shared
   if type(shared) == "table" then
     for k, v in pairs(shared) do
       vars[k] = v
     end
   end
-  local env = decoded[name]
+  local environments = decoded.environments
+  local env = type(environments) == "table" and environments[name]
   if type(env) == "table" then
     for k, v in pairs(env) do
       vars[k] = v
@@ -75,8 +70,12 @@ end
 
 function M.env_file_for_buf(bufnr)
   bufnr = bufnr or 0
-  local dir = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(bufnr), ":h")
-  return find_env_file(dir)
+  local dir = dir_for_buf(bufnr)
+  local path = env_file_path(dir)
+  if vim.fn.filereadable(path) == 0 then
+    return nil
+  end
+  return path
 end
 
 function M.get(bufnr)
@@ -108,13 +107,13 @@ function M.status(bufnr)
   return "env: " .. (name or "(none, :HttpEnv)")
 end
 
--- merged variables ($shared + selected env, shared file then private file
--- overriding it, then session-persisted vars overriding those) for the
--- environment currently selected for this buffer. `session_keys` is the
--- set of keys present in the session file; `env_keys` is the set of keys
--- that already had a value from the env file(s) alone, before the session
--- was applied -- the two together let callers tell "session added a new
--- var" apart from "session overrode an existing env var".
+-- merged variables ("shared" + selected environment, then
+-- session-persisted vars overriding those) for the environment currently
+-- selected for this buffer. `session_keys` is the set of keys present in
+-- the persisted state; `env_keys` is the set of keys that already had a
+-- value from the env file alone, before persisted state was applied -- the
+-- two together let callers tell "session added a new var" apart from
+-- "session overrode an existing env var"
 function M.vars(bufnr)
   bufnr = bufnr or 0
   local env_file = M.env_file_for_buf(bufnr)
@@ -129,17 +128,13 @@ function M.vars(bufnr)
   local vars = {}
   merge_env(vars, read_json(env_file), name)
 
-  local private_file = private_file_for(env_file)
-  if vim.fn.filereadable(private_file) == 1 then
-    merge_env(vars, read_json(private_file), name)
-  end
-
   local env_keys = {}
   for k in pairs(vars) do
     env_keys[k] = true
   end
 
-  local session_vars = session.load(vim.fn.getcwd())
+  local dir = dir_for_buf(bufnr)
+  local session_vars = session.load(dir, name)
   local session_keys = {}
   for k, v in pairs(session_vars) do
     vars[k] = v
@@ -256,7 +251,7 @@ function M.pick(bufnr)
     return
   end
 
-  vim.ui.select(names, { prompt = "Select httpyac environment:" }, function(choice)
+  vim.ui.select(names, { prompt = "Select httpfly environment:" }, function(choice)
     if not choice then
       return
     end

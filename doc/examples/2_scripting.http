@@ -2,37 +2,37 @@
 # authenticated request chain -- the pattern for real APIs that issue a
 # session/JWT token on login and expect it back as a Bearer token.
 #
+# httpfly's scripts are Lua (the only supported language -- "# @lang lua"
+# is implied and never needs to be written), and the only mutable variable
+# store a script can reach is "client.global" -- there's no per-request
+# "request.variables"-style API for a *local*, non-persisted value, so a
+# pre-request script's only way to hand a value forward is the same
+# persisted store a post-request script uses.
+#
 # Run `make httpbin-up` from the repo root first (requires Docker). In a
 # real project you'd usually build the URL from an environment variable
-# (e.g. {{base_url}}, see the "Environments" section of the README)
-# instead of hardcoding http://localhost:8080 below.
-
-###
-# @name PreRequestExample
-# @lang javascript
-< {%
-  request.variables.set("request_id", "req-" + Date.now());
-%}
-
-GET http://localhost:8080/get?request_id={{request_id}} HTTP/1.1
+# (e.g. {{base_url}}, see 3_environments.http) instead of hardcoding
+# http://localhost:8080 below.
 
 ###
 # @name Login
-# @lang javascript
 # Stand-in for a real login call. httpbin's /uuid returns a fresh,
 # server-generated value each time -- playing the role of a token a real
 # auth endpoint would issue in its response body.
 GET http://localhost:8080/uuid HTTP/1.1
 
 > {%
-  // A "> {% ... %}" block runs AFTER the response comes back. response.body
-  // is already parsed into an object for JSON responses, so no manual
-  // JSON.parse needed. client.global.set(...) makes the value available to
-  // {{auth_token}} in later requests -- even ones sent much later, as their
-  // own separate :HttpSend, since httpfly.nvim persists it (see "Chaining
-  // requests across separate sends" in the README). Run :HttpEnvVars to
-  // inspect what's currently captured.
-  client.global.set("auth_token", response.body.uuid);
+  -- A "> {% ... %}" block runs AFTER the response comes back.
+  -- response.body is always the raw response text, whatever its
+  -- Content-Type -- decode it yourself with json.decode(...) when it's
+  -- JSON, as here. client.global:set(...) makes the value available to
+  -- {{auth_token}} in later requests -- even ones sent much later, as
+  -- their own separate :HttpSend, since httpfly persists it to
+  -- .httpfly/state.json. Run :HttpEnvVars to inspect what's currently
+  -- captured.
+  local json = require("json")
+  local data = json.decode(response.body)
+  client.global:set("auth_token", data.uuid)
 %}
 
 ###

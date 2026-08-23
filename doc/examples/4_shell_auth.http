@@ -1,0 +1,22 @@
+# Delegating auth to an external shell script from a pre-request script --
+# useful when the login flow is too complex or awkward to reimplement
+# inline (a company-internal CLI that talks to a vault/hardware token, a
+# multi-request OAuth device-code exchange, decrypting a credential file,
+# etc.). generate-token.sh next to this file stands in for that: shell out
+# to it, capture its stdout, and use it as the request's token.
+#
+# Run `make httpbin-up` from the repo root first (requires Docker).
+
+###
+# @name Get
+< {%
+  -- cmd.exec runs relative to httpfly's own process cwd, which
+  -- httpfly.nvim always sets to this .http file's own directory (see
+  -- 3_environments.http) -- so a plain relative path works regardless of
+  -- where Neovim itself was started from.
+  local cmd = require("cmd")
+  local result = cmd.exec("./generate-token.sh")
+  client.global:set("auth_token", (result.stdout or ""):gsub("%s+$", ""))
+%}
+GET http://localhost:8080/bearer HTTP/1.1
+Authorization: Bearer {{auth_token}}
