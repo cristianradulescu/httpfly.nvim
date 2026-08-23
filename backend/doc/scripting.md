@@ -75,19 +75,23 @@ currently in `client.global` at that moment — so a value one request's
 post-request script sets is picked up by:
 
 - a **later request in the same `httpfly run`**, and
-- any request in a **later, separate `httpfly run`** invocation, in the
-  same directory.
+- any request in a **later, separate `httpfly run`** invocation, run from
+  the same working directory.
 
 That's what makes the login → token → authenticated-request pattern work
 either running the whole file in one command, or running each request
 separately (e.g. because you only want to re-authenticate occasionally,
 not on every run) — see the example below.
 
-State is scoped per **directory** (not per file — matching
-`httpfly.env.json`'s own directory-based discovery) and per **environment**
-(`-env dev` and `-env prod` never share values; no `-env` gets its own
-bucket too). Add `.httpfly/` to your `.gitignore` — it's very likely to
-hold real secrets like tokens.
+State lives in `.httpfly/state.json` **in the current working
+directory** — wherever you launch `httpfly` from, not the directory
+containing the `.http` file (same rule as `httpfly.env.json`; see
+[Environments](environments.md)) — scoped per **environment** (`-env dev`
+and `-env prod` never share values; no `-env` gets its own bucket too).
+This means several `.http` files in different subdirectories can share
+one `client.global` state as long as you run httpfly from their common
+parent. Add `.httpfly/` to your `.gitignore` — it's very likely to hold
+real secrets like tokens.
 
 ### If a variable is still undefined right before sending
 
@@ -116,13 +120,14 @@ container. Both work:
 
 ```sh
 make httpbin-up
+cd doc/examples   # .httpfly/state.json is created here, in the CWD
 
 # the whole file in one command -- AuthenticatedRequest sees the token
 # Login's post-request script just set, in the same run
-httpfly run doc/examples/3_scripting.http
+httpfly run 3_scripting.http
 
 # or one request at a time, in separate commands -- AuthenticatedRequest
 # picks up whatever Login set the last time IT ran, from .httpfly/state.json
-httpfly run -name Login doc/examples/3_scripting.http
-httpfly run -name AuthenticatedRequest doc/examples/3_scripting.http
+httpfly run -name Login 3_scripting.http
+httpfly run -name AuthenticatedRequest 3_scripting.http
 ```

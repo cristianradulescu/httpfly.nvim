@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 
@@ -26,11 +25,16 @@ func validateCommand(args []string, stdout io.Writer) error {
 	}
 	path := fs.Arg(0)
 
-	envVars, err := resolveEnvVars(path, *envName)
+	dir, err := configDir()
 	if err != nil {
 		return fmt.Errorf("validate: %w", err)
 	}
-	persisted, err := state.Load(filepath.Dir(path), *envName)
+
+	envVars, err := resolveEnvVars(*envName)
+	if err != nil {
+		return fmt.Errorf("validate: %w", err)
+	}
+	persisted, err := state.Load(dir, *envName)
 	if err != nil {
 		return fmt.Errorf("validate: %w", err)
 	}

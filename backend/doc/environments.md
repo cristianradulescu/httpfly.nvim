@@ -5,9 +5,20 @@ An environment file lets the same `.http` file target different backends
 
 ## The file
 
-httpfly looks for a file named `httpfly.env.json` **in the same directory
-as the `.http` file** you're running. It's a JSON object with two optional
-top-level keys:
+httpfly looks for a file named `httpfly.env.json` **in the current working
+directory — wherever you launch `httpfly` from — not the directory
+containing the `.http` file** you're running. This is deliberate: it lets
+several `.http` files in different subdirectories (e.g. `v1/`, `v2/` of an
+API) share one environment file in their common parent, as long as you run
+httpfly from that parent:
+
+```sh
+cd my-api/            # httpfly.env.json lives here
+httpfly run -env dev v1/login.http
+httpfly run -env dev v2/login.http   # same env file, different .http file
+```
+
+It's a JSON object with two optional top-level keys:
 
 ```json
 {
@@ -45,9 +56,9 @@ httpfly run -env prod api.http
 httpfly validate -env dev api.http
 ```
 
-If `httpfly.env.json` doesn't exist next to `api.http`, or doesn't define
-the named environment, httpfly reports an error rather than silently
-running with nothing:
+If `httpfly.env.json` doesn't exist in the current working directory, or
+doesn't define the named environment, httpfly reports an error rather than
+silently running with nothing:
 
 ```
 httpfly: run: httpfly.env.json: no environment named "staging" (available: dev, prod)
@@ -55,6 +66,10 @@ httpfly: run: httpfly.env.json: no environment named "staging" (available: dev, 
 
 `-env` is entirely optional — a file with no `httpfly.env.json`, or run
 without `-env`, behaves exactly as if environments didn't exist.
+
+Note that `-name`, `-json`, `-v`, etc. don't affect where httpfly looks for
+`httpfly.env.json` — it's always the current working directory, regardless
+of which `.http` file you point at or where it lives.
 
 ## Precedence
 
@@ -74,9 +89,11 @@ for how global vs. local variables work within the file itself.
 ## Example
 
 `doc/examples/httpfly.env.json` in this repo, alongside
-`doc/examples/2_variables.http`:
+`doc/examples/2_variables.http`. Since env-file lookup uses the current
+working directory, run these from inside `doc/examples/`:
 
 ```sh
-httpfly run -env dev doc/examples/2_variables.http           # host = http://localhost:8080 (matches the file's own default)
-httpfly run -env dev-alt-port doc/examples/2_variables.http  # host = http://localhost:9090 (overrides it)
+cd doc/examples
+httpfly run -env dev 2_variables.http           # host = http://localhost:8080 (matches the file's own default)
+httpfly run -env dev-alt-port 2_variables.http  # host = http://localhost:9090 (overrides it)
 ```

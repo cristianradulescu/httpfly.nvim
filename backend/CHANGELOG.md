@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** `httpfly.env.json` and `.httpfly/state.json` are now
+  resolved against the **current working directory** (wherever `httpfly`
+  is launched from), not the directory containing the `.http` file being
+  acted on. There is no fallback to the old file-relative lookup. This
+  lets several `.http` files in different subdirectories (e.g. `v1/`,
+  `v2/` of an API) share one environment file and one persisted
+  `client.global` state, as long as `httpfly` is invoked from their common
+  parent directory. If you relied on the old behavior — e.g. running
+  `httpfly run some/dir/request.http` from an unrelated working directory
+  — move or symlink `httpfly.env.json`/`.httpfly/` accordingly, or `cd`
+  into the `.http` file's directory first.
+
 ## [0.1.2] - 2026-08-23
 
 ### Added

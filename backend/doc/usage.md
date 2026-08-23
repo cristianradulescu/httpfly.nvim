@@ -162,7 +162,7 @@ exits non-zero, since a command is required).
 | `-name X` | `run`, `validate` | Restrict to the single request declared with `# @name X`. Errors if no request has that name. |
 | `-name X` | `convert from-curl` | Sets the generated request's `@name` (different meaning than for `run`/`validate` — there's no existing request to restrict to). Defaults to `ConvertedRequest` if omitted. |
 | `-name X` | `convert to-curl` | Picks which request to convert. Required if the file has more than one. |
-| `-env E` | `run`, `validate`, `convert to-curl` | Apply variables from the environment named `E` in `httpfly.env.json`, found alongside `<file.http>`. See [Environments](environments.md). |
+| `-env E` | `run`, `validate`, `convert to-curl` | Apply variables from the environment named `E` in `httpfly.env.json`, found in the current working directory (not `<file.http>`'s own directory). See [Environments](environments.md). |
 | `-s`, `-silent` | `run` | Print only response bodies, back to back, nothing else — like `curl -s`. A failed request prints nothing for itself but still counts toward the exit code. Mutually exclusive with `-json`. |
 | `-json` | `run` | Print a JSON array instead of plain text. See below. Mutually exclusive with `-s`/`-silent`. |
 | `-v`, `-verbose` | `run` | Also report TLS connection details (version, cipher suite, ALPN protocol, peer certificate). No effect on a plain HTTP (non-TLS) request. |

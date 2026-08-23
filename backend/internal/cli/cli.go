@@ -53,8 +53,9 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "  version                                                print the httpfly version")
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "-name restricts either command to the single request declared with \"# @name X\".")
-	fmt.Fprintln(w, "-env applies the named environment's variables from httpfly.env.json (next to the")
-	fmt.Fprintln(w, "  .http file), overriding the file's own global variables but not a request's local ones.")
+	fmt.Fprintln(w, "-env applies the named environment's variables from httpfly.env.json, found in the")
+	fmt.Fprintln(w, "  current working directory (not the .http file's own directory) -- overriding the")
+	fmt.Fprintln(w, "  file's own global variables but not a request's local ones.")
 	fmt.Fprintln(w, "-s/-silent (run only) prints only response bodies, nothing else -- like curl -s.")
 	fmt.Fprintln(w, "-json (run only) prints a JSON array of {name, request, response|error, duration_ms}.")
 	fmt.Fprintln(w, "-v/-verbose (run only) also prints TLS connection details (version, cipher, peer certificate).")
@@ -62,5 +63,5 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "\"< {% ... %}\" and \"> {% ... %}\" blocks run as Lua pre-/post-request scripts. They can")
 	fmt.Fprintln(w, "read/write persisted variables via client.global:get/set(name[, value]) -- saved to")
-	fmt.Fprintln(w, "  .httpfly/state.json next to the .http file, so a later, separate run reuses them.")
+	fmt.Fprintln(w, "  .httpfly/state.json in the current working directory, so a later, separate run reuses them.")
 }

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 
 	"github.com/cristianradulescu/httpfly/internal/curl"
 	"github.com/cristianradulescu/httpfly/internal/parser"
@@ -95,11 +94,16 @@ func convertToCurlCommand(args []string, stdout, stderr io.Writer) error {
 	}
 	path := fs.Arg(0)
 
-	envVars, err := resolveEnvVars(path, *envName)
+	dir, err := configDir()
 	if err != nil {
 		return fmt.Errorf("convert to-curl: %w", err)
 	}
-	persisted, err := state.Load(filepath.Dir(path), *envName)
+
+	envVars, err := resolveEnvVars(*envName)
+	if err != nil {
+		return fmt.Errorf("convert to-curl: %w", err)
+	}
+	persisted, err := state.Load(dir, *envName)
 	if err != nil {
 		return fmt.Errorf("convert to-curl: %w", err)
 	}
