@@ -156,6 +156,11 @@ local function require_file()
     vim.notify("httpfly: buffer has no file", vim.log.levels.WARN)
     return nil
   end
+  -- httpyac reads the file from disk, not the buffer, so an unsaved edit
+  -- would otherwise silently send the stale on-disk version.
+  if vim.bo.modified then
+    vim.cmd("write")
+  end
   return file
 end
 
