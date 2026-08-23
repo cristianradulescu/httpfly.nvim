@@ -115,6 +115,14 @@ func runCommand(args []string, stdout io.Writer) error {
 	}
 
 	if failed > 0 {
+		if *jsonOutput {
+			// The JSON array is already on stdout, complete and parseable,
+			// with each failed request's own "error"/"script_error" field --
+			// printing a summary here too would risk corrupting that output
+			// for a tool that merges stdout and stderr. Exit code alone
+			// signals failure.
+			return ErrSilent
+		}
 		return fmt.Errorf("run: %d of %d request(s) failed", failed, len(requests))
 	}
 	return nil

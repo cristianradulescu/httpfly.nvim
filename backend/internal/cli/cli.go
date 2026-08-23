@@ -2,9 +2,18 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
 )
+
+// ErrSilent marks a returned error whose message must not be printed --
+// used when the caller (currently just "run -json") has already written
+// its complete, parseable output to stdout and a human-readable summary
+// alongside it would risk corrupting that output for a tool reading it
+// (e.g. one that merges stdout and stderr). The exit code still reflects
+// failure; wrap it with fmt.Errorf's %w or return it directly.
+var ErrSilent = errors.New("")
 
 // Run dispatches args to a subcommand, writing normal and error output to
 // stdout/stderr respectively.

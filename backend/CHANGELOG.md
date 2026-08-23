@@ -30,6 +30,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `run -json` gains an optional `script_error` field for a post-request
   script that errored (the response itself is still included).
 
+### Fixed
+
+- `run -json` no longer prints a trailing `run: N of M request(s) failed`
+  summary when one or more requests fail. That line went to stderr, not
+  the JSON on stdout, but a consumer that merges the two streams (e.g. a
+  container log, some CI runners) would see it appended right after the
+  array, breaking a naive parse. The exit code still reflects failure, and
+  each failed request's own `error`/`script_error` field already carries
+  the detail the summary would have repeated.
+
 ## [0.1.0] - 2026-08-19
 
 ### Added

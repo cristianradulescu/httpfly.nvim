@@ -21,6 +21,14 @@ file fails to parse. A non-2xx HTTP response (404, 500, ...) is a normal
 result, not a failure — it's printed like any other response and doesn't
 affect the exit code.
 
+In plain-text/`-s` mode, a failure also prints a one-line summary
+(`run: N of M request(s) failed`) after all results. **`-json` mode never
+prints this or anything else beyond the JSON array** — each failed
+request's own `error`/`script_error` field already carries that
+information, and the exit code alone signals overall failure, so a tool
+reading the array (even one that merges stdout and stderr) never has to
+deal with trailing non-JSON text.
+
 A `< {% %}`/`> {% %}` script attached to a request runs right before it's
 sent / right after its response arrives — see [Scripting](scripting.md).
 

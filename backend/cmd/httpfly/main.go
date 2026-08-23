@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -9,7 +10,9 @@ import (
 
 func main() {
 	if err := cli.Run(os.Args[1:], os.Stdout, os.Stderr); err != nil {
-		fmt.Fprintln(os.Stderr, "httpfly:", err)
+		if !errors.Is(err, cli.ErrSilent) {
+			fmt.Fprintln(os.Stderr, "httpfly:", err)
+		}
 		os.Exit(1)
 	}
 }
