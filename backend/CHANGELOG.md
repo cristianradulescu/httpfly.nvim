@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-08-23
+
 ### Added
 
 - `httpfly convert from-curl` — converts a bash-style curl command (e.g. a
