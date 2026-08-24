@@ -1,0 +1,48 @@
+# Saving a response to disk via a "# @download" annotation -- a marker
+# this plugin recognizes, not httpfly itself (httpfly's own equivalent is
+# a plain "-download F" flag on "run", which only ever applies to a single
+# selected request -- it has no per-request annotation of its own). This
+# plugin scans the buffer for "# @download" and, when present on a
+# request, wires up "-download" automatically before sending -- no
+# separate command, no prompt.
+#
+# Works for any response, not just binary content -- DownloadJson below
+# saves a JSON body just as well as DownloadAuto/DownloadNamed save a PNG
+# (a post-request script + response.body, see 6_save_response.http, is
+# just as byte-accurate for binary content in httpfly -- Lua strings are
+# byte arrays, not decoded Unicode text). The advantage here is
+# convenience: no script to write, and it works the same whether the
+# request is sent via :HttpSend or as part of :HttpSendAll.
+#
+# Saved under .httpfly/downloads/ next to this file (same place
+# .httpfly/history/ and .httpfly/state.json already live -- one
+# .gitignore entry covers all of it). Bare "# @download" picks a filename
+# from the URL's last path segment -- httpbin's /image/png has no real
+# filename in its path (the segment is literally "png"), so DownloadAuto
+# below saves as "png". Unlike a browser (or the old httpyac-backed
+# version of this plugin), there's no way to name the file from the
+# *response* (Content-Disposition, a content-type-guessed extension):
+# httpfly needs the destination path upfront, before the request is even
+# sent. "# @download <name>" (see DownloadNamed/DownloadJson below)
+# overrides it explicitly -- prefer that when the URL alone won't give you
+# a sensible name.
+#
+# Works the same whether sent with :HttpSend (just this request) or
+# :HttpSendAll (every request in the file, download-annotated or not).
+#
+# Run `make httpbin-up` from the repo root first (requires Docker).
+
+###
+# @name DownloadAuto
+# @download
+GET http://localhost:8080/image/png HTTP/1.1
+
+###
+# @name DownloadNamed
+# @download my-photo.png
+GET http://localhost:8080/image/png HTTP/1.1
+
+###
+# @name DownloadJson
+# @download report.json
+GET http://localhost:8080/json HTTP/1.1

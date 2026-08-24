@@ -60,7 +60,11 @@ function M.render(decoded, cmd_str)
     table.insert(out, "**Command**")
     table.insert(out, "")
     table.insert(out, "```sh")
-    table.insert(out, cmd_str)
+    -- cmd_str can be several newline-joined commands (run_many() stitching
+    -- several "httpfly run -name X" invocations into one view, for
+    -- "@download") -- vim.split is a no-op for an already single-line
+    -- cmd_str, so this is safe either way
+    vim.list_extend(out, vim.split(cmd_str, "\n"))
     table.insert(out, "```")
     table.insert(out, "")
   end
@@ -132,10 +136,17 @@ function M.render(decoded, cmd_str)
       table.insert(out, "")
       append_headers(out, truncations, resp.headers)
       table.insert(out, "")
-      table.insert(out, "**Body**")
-      table.insert(out, "")
-      vim.list_extend(out, body_block(resp.body, resp.headers))
-      table.insert(out, "")
+      if resp.download_path then
+        table.insert(out, "**Downloaded to**")
+        table.insert(out, "")
+        table.insert(out, "`" .. resp.download_path .. "`")
+        table.insert(out, "")
+      else
+        table.insert(out, "**Body**")
+        table.insert(out, "")
+        vim.list_extend(out, body_block(resp.body, resp.headers))
+        table.insert(out, "")
+      end
 
       if req.script_error then
         table.insert(out, string.format("⚠️ **post-request script error:** %s", tostring(req.script_error)))

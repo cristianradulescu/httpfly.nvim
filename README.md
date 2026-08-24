@@ -23,6 +23,8 @@ does that. This plugin just wires it into Neovim:
 - lets you preview values that got truncated in header tables (e.g. long
   bearer tokens) in a floating window
 - saves a copy of every result under `.httpfly/history/`
+- saves a response body to disk byte-perfect for any request marked
+  `# @download`
 
 If you need JetBrains HTTP Client-style syntax (`###` separators,
 `{{variables}}`, `< {% ... %}`/`> {% ... %}` Lua pre/post-request scripts,
@@ -37,11 +39,13 @@ directory — pick an environment with `:HttpEnv` first), `4_shell_auth.http`
 (a pre-request script shelling out to `generate-token.sh` and using its
 stdout as the request's token — for auth flows too complex to reimplement
 inline), `5_forms.http` (`application/x-www-form-urlencoded` and
-`multipart/form-data`), and `6_save_response.http` (a post-request script
+`multipart/form-data`), `6_save_response.http` (a post-request script
 saving a JSON/text response body to `/tmp` for its own sake — a
-snapshot/fixture, not a file the server means for you to download). They
-hit a local httpbin instance — run `make httpbin-up` first (requires
-Docker), `make httpbin-down` when done.
+snapshot/fixture, not a file the server means for you to download), and
+`7_download.http` (saving a response to disk, byte-perfect, via
+`# @download` — a binary one, an image, as well as a JSON one). They hit a
+local httpbin instance — run `make httpbin-up` first (requires Docker),
+`make httpbin-down` when done.
 
 ## Requirements
 
@@ -160,6 +164,41 @@ picked up by a later request in the same `:HttpSendAll`, and by any request
 in a later, separate `:HttpSend` — no plugin hook or extra configuration
 needed on this plugin's side. Run `:HttpSessionClear` to delete the state
 file (e.g. once a token expires).
+
+### Downloading files
+
+`# @download` on a request saves its response body to disk, byte-perfect —
+for any response, not just binary content (an image, a PDF, a JSON body,
+plain text, ...). It's just as reliable as scripting `response.body`
+yourself (see "Scripting notes" and `6_save_response.http` below — Lua
+strings are byte arrays, so nothing is lost either way, even for binary
+content); the advantage of `# @download` is convenience — no script to
+write, and it works the same from `:HttpSend` or `:HttpSendAll`. This is
+this plugin's own annotation, not httpfly's — httpfly itself has no
+per-request download marker, only a plain `-download F` flag on `run`,
+which only ever applies to a single selected request. This plugin scans
+the buffer for `# @download` and wires that flag up automatically whenever
+it finds one, so it works the same whether you send the request with
+`:HttpSend` or as part of `:HttpSendAll` (a file mixing `@download` and
+ordinary requests is sent as one `httpfly run -name X` invocation per
+request instead of httpfly's own single multi-request `run <file>`, so
+each request can get its own `-download`; files with no `@download` at all
+are unaffected and still go through one invocation).
+
+Bare `# @download` picks a filename from the URL's last path segment.
+Unlike a browser, there's no way to name the file from the *response*
+(`Content-Disposition`, a content-type-guessed extension) — httpfly needs
+the destination path upfront, before the request is even sent — so use
+`# @download some-name.ext` to set an explicit filename whenever the URL
+alone won't give you a sensible one (httpbin's `/image/png`, for instance,
+has no real filename in its path). Either way, the file is saved under
+`.httpfly/downloads/` next to the `.http` file — the same place
+`.httpfly/history/` and `.httpfly/state.json` live, so the one `.gitignore`
+entry (see below) still covers everything. That directory is created for
+you if it doesn't exist yet.
+
+The saved path shows up in the rendered output as a "Downloaded to" line in
+place of the response body.
 
 ### Scripting notes
 

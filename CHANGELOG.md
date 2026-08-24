@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `# @download` / `# @download some-name.ext` annotation to save a
+  request's response body to disk, byte-perfect, restoring the old
+  httpyac-backed plugin's design on top of httpfly's new `-download` flag.
+  Detected automatically by both `:HttpSend` and `:HttpSendAll` — no
+  separate command. Saved under `.httpfly/downloads/`, filename from the
+  annotation's value or guessed from the URL when bare (httpfly needs the
+  destination path before sending, so — unlike a browser — there's no way
+  to name the file from the response's `Content-Disposition`).
+
 ### Changed
 
 - Switched the backend from [httpyac](https://httpyac.github.io/) to

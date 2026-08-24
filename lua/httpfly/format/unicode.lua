@@ -250,10 +250,18 @@ function M.render(decoded, cmd_str)
       hl_line(highlights, out, "Statement")
       append_headers_table(out, truncations, highlights, resp.headers)
       table.insert(out, "")
-      table.insert(out, "Body")
-      hl_line(highlights, out, "Statement")
-      body_block(out, highlights, resp.body, resp.headers)
-      table.insert(out, "")
+      if resp.download_path then
+        table.insert(out, "Downloaded to")
+        hl_line(highlights, out, "Statement")
+        table.insert(out, "  " .. resp.download_path)
+        hl_line(highlights, out, "DiagnosticOk")
+        table.insert(out, "")
+      else
+        table.insert(out, "Body")
+        hl_line(highlights, out, "Statement")
+        body_block(out, highlights, resp.body, resp.headers)
+        table.insert(out, "")
+      end
 
       if req.script_error then
         table.insert(out, "  ⚠ post-request script error: " .. tostring(req.script_error))

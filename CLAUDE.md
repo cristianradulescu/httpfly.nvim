@@ -85,14 +85,65 @@ Request flow, end to end:
      the request under the cursor" flag — `-name X` (matching the request's
      mandatory `# @name X`) is the only way to restrict a run to one
      request. `M.send_current()` therefore has to find the enclosing
-     request's name itself: `find_enclosing_name()` mirrors httpfly's own
-     parser, which splits the file on lines that are exactly `###` (the
-     segment before the first `###` is the prelude and never carries a
-     `@name`, since `@name` is request-only and mandatory on every real
-     request). It locates which block contains the cursor line, then scans
-     that block for a `# @name X` line. `vim.notify`s a warning rather than
-     sending anything if no name is found (cursor sitting in the prelude,
-     or an `.http` file that hasn't declared a name yet).
+     request's name itself: `find_enclosing_block()`/`parse_blocks()`
+     mirror httpfly's own parser, which splits the file on lines that are
+     exactly `###` (the segment before the first `###` is the prelude and
+     never carries a `@name`, since `@name` is request-only and mandatory
+     on every real request). `parse_blocks()` walks every block once,
+     extracting each one's `# @name X`, its request line's URL (for a
+     download filename guess — see below), and an `# @download` annotation
+     if present; `find_enclosing_block()` picks out whichever block
+     contains the cursor line. `vim.notify`s a warning rather than sending
+     anything if no name is found (cursor sitting in the prelude, or an
+     `.http` file that hasn't declared a name yet).
+   - **`# @download`**: httpfly's own equivalent is a plain `-download F`
+     flag on `run` (added after this plugin's initial httpyac→httpfly
+     switch), not a per-request annotation — it only ever applies to a
+     single selected request, and needs the destination path upfront,
+     before the request is even sent (so, unlike a browser or the old
+     httpyac-backed version of this plugin, there's no way to name the file
+     from the *response*'s `Content-Disposition` — only the URL is
+     available at build-command time). This plugin restores a
+     `# @download` / `# @download some-name.ext` annotation on top of that
+     flag, matching the old httpyac-backed plugin's design: `parse_blocks()`
+     recognizes it as its own metadata key (unknown to httpfly itself, which
+     just reports it as a harmless "unknown metadata" warning), and
+     `resolve_download_path()` turns it into a full path under
+     `.httpfly/downloads/` next to the `.http` file — `guess_filename()`
+     (the URL's last `/`-delimited, query-stripped path segment, falling
+     back to `"download"`) when the annotation is bare, the annotation's
+     value verbatim otherwise — creating that directory if needed (httpfly
+     itself does not create `-download`'s target directory, same as
+     `curl -o`). `M.send_current()` resolves this for the single block it
+     found and passes it straight into `build_cmd()`'s optional
+     `download_path` argument.
+   - **`M.send_all()` and mixed `@download` files**: httpfly's `-download`
+     requires selecting exactly one request, so a file where only *some*
+     requests are marked `@download` can't be sent as one
+     `httpfly run <file>` call the way `:HttpSendAll` normally does.
+     `send_all()` checks `parse_blocks()` for any `@download` first line: if
+     none, it takes the fast path unchanged (`build_cmd(file)`, no
+     `-name`, one process for the whole file — this is the common case and
+     is not slowed down by any of this). If at least one block is marked,
+     it instead calls `run_many()` with one `build_cmd(file, name,
+     download_path)` per named block, each its own `httpfly run -name X
+     [-download F] <file>` invocation, sent **sequentially** in file order.
+     This is still functionally equivalent to one process for the whole
+     file: httpfly writes `client.global:set(...)` through to
+     `.httpfly/state.json` immediately (see below), the same mechanism that
+     already makes a login→token chain work across separate `:HttpSend`
+     calls, so N sequential invocations see each other's persisted state
+     exactly like one process would — just slower (N process spawns
+     instead of one).
+   - `run_many()` stitches the resulting per-invocation JSON arrays into one
+     combined array (`format.render_decoded()`, `format.lua`'s decoded-input
+     sibling to `format.render()`, added specifically so this stitching
+     doesn't need to round-trip back through JSON text) and renders that
+     once, so the result buffer/history entry reads as a single unified
+     view — same as `run()`'s single-invocation path — with a `**Command**`
+     block listing every invocation's command line, one per line (both
+     renderers already split `cmd_str` on `"\n"` before inserting it, which
+     `run()`'s always-single-line `cmd_str` also satisfies trivially).
    - **Cross-invocation variable persistence** is native to httpfly —
      `client.global:set(...)` in a Lua script writes straight through to
      `.httpfly/state.json` (`internal/state` on httpfly's side), keyed by
@@ -105,13 +156,6 @@ Request flow, end to end:
      `:HttpSessionClear` can delete it (`session.clear(dir)` — deletes the
      whole file, same coarse granularity as before; httpfly's per-
      environment buckets all live in that one file).
-   - **No binary download support**: httpfly has no plugin/hook mechanism
-     at all (unlike httpyac, which this plugin used to extend via an
-     `HTTPYAC_PLUGIN`-loaded JS module for exactly this). There is
-     currently no way to save a genuinely binary response byte-perfect
-     through this plugin — dropped along with the httpyac backend, not
-     reimplemented. `format/markdown.lua`/`format/unicode.lua` have no
-     "Download" section as a result.
 4. `lua/httpfly/format.lua` is a thin dispatcher: it decodes the JSON
    payload (`format/shared.lua`'s `extract_json`, defensive against any
    stray non-JSON text before the `[` — relevant if `cmd` is ever invoked
@@ -129,18 +173,25 @@ Request flow, end to end:
    rather than threaded back through the renderer.
    - **Per-request JSON shape**: each array element is
      `{name, request:{method,url,proto,headers,body},
-     response:{status_code,headers,body,tls?}, final_url?, script_error?,
-     error?, duration_ms}`. `name` is always present (httpfly makes
-     `@name` mandatory on every request, so there's no `fileName` fallback
-     to fall back to the way the old httpyac backend needed). A request
-     that failed to *send* (DNS failure, connection refused, ...) has
-     `error` instead of `response` — both renderers explicitly render an
-     "Error"/"▸ Error" section for this now, since silently rendering
-     nothing when there's no response object would otherwise hide every
-     transport failure. `script_error` (a post-request script that
-     errored) can coexist with a present `response` — rendered as its own
-     flagged line right after the response body, matching httpfly's own
-     docs ("coexists with `response`, unlike `error`").
+     response:{status_code,headers,body,download_path?,tls?}, final_url?,
+     script_error?, error?, duration_ms}`. `name` is always present
+     (httpfly makes `@name` mandatory on every request, so there's no
+     `fileName` fallback to fall back to the way the old httpyac backend
+     needed). A request that failed to *send* (DNS failure, connection
+     refused, ...) has `error` instead of `response` — both renderers
+     explicitly render an "Error"/"▸ Error" section for this now, since
+     silently rendering nothing when there's no response object would
+     otherwise hide every transport failure. `script_error` (a
+     post-request script that errored) can coexist with a present
+     `response` — rendered as its own flagged line right after the
+     response body, matching httpfly's own docs ("coexists with
+     `response`, unlike `error`"). When the request was sent with
+     `-download` (i.e. it carried `# @download`), `response.download_path`
+     is set and `response.body` is empty — both
+     renderers check `download_path` first and render a "Downloaded to"
+     line with that path in place of the normal body block (the request
+     body, if any, still renders normally — only the response is affected
+     by `-download`).
    - **No test-assertion output**: httpfly has no `client.test(...)`-style
      API and so no `testResults` field in its JSON at all — the "Test
      Results" section that existed under the httpyac backend has been
@@ -184,7 +235,9 @@ Filetype/keymap wiring: `ftdetect/http.lua` registers `*.http` as filetype
 `http`; `ftplugin/http.lua` sets the winbar (unconditionally) and the
 buffer-local keymaps (`<leader>hs`, `<leader>ha`, `<leader>he`, `<leader>hv`,
 `<leader>hc`) for send-current, send-all, env-picker, env-vars, and
-session-clear, gated by `config.options.keymaps`.
+session-clear, gated by `config.options.keymaps`. There is no dedicated
+download keymap/command — `# @download` is picked up automatically by
+`:HttpSend`/`:HttpSendAll`, see above.
 
 ## Manual verification
 
