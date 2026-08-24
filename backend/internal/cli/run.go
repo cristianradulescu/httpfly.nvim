@@ -23,8 +23,9 @@ import (
 // Result.Err because, unlike a transport failure, the response was
 // received successfully -- it should still be shown/counted, just flagged.
 type requestOutcome struct {
-	Result    client.Result
-	ScriptErr error
+	Result       client.Result
+	ScriptErr    error
+	DownloadPath string // non-empty if -download saved the body to this path instead of printing it
 }
 
 func runCommand(args []string, stdout io.Writer) error {
@@ -39,6 +40,7 @@ func runCommand(args []string, stdout io.Writer) error {
 	fs.BoolVar(&verbose, "verbose", false, "also print TLS connection details (version, cipher, peer certificate)")
 	fs.BoolVar(&verbose, "v", false, "shorthand for -verbose")
 	envName := fs.String("env", "", "apply variables from the named environment in httpfly.env.json")
+	download := fs.String("download", "", "save the response body to this file instead of printing it (only one request may be selected; the file's parent directory must already exist)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -47,6 +49,9 @@ func runCommand(args []string, stdout io.Writer) error {
 	}
 	if silent && *jsonOutput {
 		return fmt.Errorf("run: -silent and -json are mutually exclusive")
+	}
+	if silent && *download != "" {
+		return fmt.Errorf("run: -silent and -download are mutually exclusive")
 	}
 	path := fs.Arg(0)
 
@@ -85,6 +90,9 @@ func runCommand(args []string, stdout io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("run: %w", err)
 	}
+	if *download != "" && len(requests) != 1 {
+		return fmt.Errorf("run: -download requires selecting exactly one request (file has %d; use -name to pick one)", len(requests))
+	}
 
 	global := script.NewGlobalState(dir, *envName, persisted)
 
@@ -93,6 +101,12 @@ func runCommand(args []string, stdout io.Writer) error {
 	var outcomes []requestOutcome
 	for _, req := range requests {
 		outcome := sendWithScripts(c, req, file.Variables, global)
+		if *download != "" && outcome.Result.Err == nil {
+			if err := os.WriteFile(*download, outcome.Result.Body, 0o644); err != nil {
+				return fmt.Errorf("run: -download: %w", err)
+			}
+			outcome.DownloadPath = *download
+		}
 		switch {
 		case *jsonOutput:
 			outcomes = append(outcomes, outcome)
@@ -101,7 +115,7 @@ func runCommand(args []string, stdout io.Writer) error {
 				stdout.Write(outcome.Result.Body)
 			}
 		default:
-			printResult(stdout, outcome.Result, verbose)
+			printResult(stdout, outcome.Result, verbose, outcome.DownloadPath)
 			if outcome.ScriptErr != nil {
 				fmt.Fprintf(stdout, "post-request script error: %v\n\n", outcome.ScriptErr)
 			}
@@ -185,7 +199,7 @@ func issuesAsFatal(issues []parser.Issue, verb string) error {
 	return fmt.Errorf("%s: %s", verb, strings.Join(msgs, "; "))
 }
 
-func printResult(w io.Writer, r client.Result, verbose bool) {
+func printResult(w io.Writer, r client.Result, verbose bool, downloadPath string) {
 	label := r.Request.Name
 	if label == "" {
 		label = r.Request.Method + " " + r.Request.URL
@@ -225,7 +239,10 @@ func printResult(w io.Writer, r client.Result, verbose bool) {
 		printTLSInfo(w, r.TLS)
 	}
 
-	if len(r.Body) > 0 {
+	switch {
+	case downloadPath != "":
+		fmt.Fprintf(w, "\n[saved %d bytes to %s]\n", len(r.Body), downloadPath)
+	case len(r.Body) > 0:
 		fmt.Fprintf(w, "\n%s\n", r.Body)
 	}
 

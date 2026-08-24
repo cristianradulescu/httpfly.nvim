@@ -1,0 +1,16 @@
+# Downloading a binary response body instead of printing it -- printing
+# raw image bytes to your terminal would just be garbage, so the "run"
+# command's "-download" flag saves them to a file instead. See
+# doc/usage.md's "-download" section.
+#
+# Run `make httpbin-up` first, then:
+#
+#   httpfly run -download photo.png 4_download.http
+#
+# (there's only one request in this file, so -name isn't required -- with
+# more than one, -download would require it to pick which response to save)
+
+###
+# @name GetPNG
+GET http://localhost:8080/image/png HTTP/1.1
+Accept: image/png

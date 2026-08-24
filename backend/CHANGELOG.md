@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- `run -download F` saves a response body to file `F` instead of printing
+  it, for binary responses (images, PDFs, archives, ...) that would
+  otherwise dump raw bytes to the terminal. Requires selecting exactly one
+  request; `F`'s parent directory must already exist (matching `curl -o`,
+  which also silently overwrites an existing file at that path). Body is
+  saved for any received response regardless of status code, but not on a
+  transport failure. Compatible with `-json` (empties `response.body`,
+  adds `response.download_path`); mutually exclusive with `-s`/`-silent`.
+
 ### Changed
 
 - **Breaking:** `httpfly.env.json` and `.httpfly/state.json` are now

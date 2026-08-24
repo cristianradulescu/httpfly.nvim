@@ -9,7 +9,7 @@ httpfly <command> [arguments]
 ### `run`
 
 ```
-httpfly run [-name X] [-env E] [-s | -json] [-v] <file.http>
+httpfly run [-name X] [-env E] [-s | -json] [-v] [-download F] <file.http>
 ```
 
 Parses `<file.http>`, sends every request it defines (in file order, or
@@ -49,6 +49,9 @@ sent / right after its response arrives — see [Scripting](scripting.md).
 
 <response body, if any>
 ```
+
+With `-download F`, the last line becomes `[saved N bytes to F]` instead
+of the raw response body — see [`-download`](#-download) below.
 
 **`-json`** switches to a JSON array instead — see [below](#-json).
 
@@ -166,6 +169,7 @@ exits non-zero, since a command is required).
 | `-s`, `-silent` | `run` | Print only response bodies, back to back, nothing else — like `curl -s`. A failed request prints nothing for itself but still counts toward the exit code. Mutually exclusive with `-json`. |
 | `-json` | `run` | Print a JSON array instead of plain text. See below. Mutually exclusive with `-s`/`-silent`. |
 | `-v`, `-verbose` | `run` | Also report TLS connection details (version, cipher suite, ALPN protocol, peer certificate). No effect on a plain HTTP (non-TLS) request. |
+| `-download F` | `run` | Save the response body to file `F` instead of printing it — see [below](#-download). Mutually exclusive with `-s`/`-silent`; compatible with `-json`. |
 | `-file F` | `convert from-curl` | Read the curl command from file `F` instead of stdin. |
 
 `-s`/`-silent` and `-v`/`-verbose` are two names for the same flag — use
@@ -190,6 +194,7 @@ Each request becomes one object in a JSON array:
       "status_code": 200,
       "headers": { "Content-Type": ["application/json"] },
       "body": "{...}",
+      "download_path": "... (only present with -download; body is empty when this is set)",
       "tls": { "...": "... (only present with -v)" }
     },
     "final_url": "... (only present if the request was redirected)",
@@ -217,6 +222,32 @@ If a request fails to send, its object has an `"error"` string instead of
 With `-v`, `response.tls` includes the *full* peer certificate chain (every
 certificate, not just the leaf — the plain-text output only prints the
 leaf, for brevity).
+
+## `-download`
+
+```sh
+httpfly run -download photo.jpg -name GetImage api.http
+```
+
+Saves the response body to the given file instead of printing it — for a
+binary response (an image, a PDF, an archive, ...) that plain-text output
+would otherwise dump as raw bytes to your terminal.
+
+- **Exactly one request must be selected** — via `-name`, or the file
+  having only one request to begin with. `run` refuses to guess which of
+  several responses you meant to save.
+- The file's **parent directory must already exist** — httpfly does not
+  create it for you (same as `curl -o`). An existing file at the target
+  path is **silently overwritten** (also matching `curl -o`).
+- The body is saved whenever a response is actually received, **regardless
+  of HTTP status code** — a 404 error page is saved just as a 200 would be,
+  consistent with httpfly's general "a non-2xx response is not a failure"
+  stance. Nothing is written if the request fails to *send* (DNS failure,
+  connection refused, ...).
+- **Compatible with `-json`**: `response.body` is emptied and
+  `response.download_path` is set to the saved path instead — see the
+  `-json` schema above. **Not compatible with `-s`/`-silent`** — both claim
+  the body for a different purpose (print it vs. save it).
 
 ## Exit codes
 

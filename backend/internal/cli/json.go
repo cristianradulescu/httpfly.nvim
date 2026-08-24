@@ -30,10 +30,11 @@ type jsonRequest struct {
 }
 
 type jsonResponse struct {
-	StatusCode int                 `json:"status_code"`
-	Headers    map[string][]string `json:"headers"`
-	Body       string              `json:"body"`
-	TLS        *jsonTLS            `json:"tls,omitempty"`
+	StatusCode   int                 `json:"status_code"`
+	Headers      map[string][]string `json:"headers"`
+	Body         string              `json:"body"`
+	DownloadPath string              `json:"download_path,omitempty"`
+	TLS          *jsonTLS            `json:"tls,omitempty"`
 }
 
 type jsonTLS struct {
@@ -76,6 +77,10 @@ func toJSONResult(o requestOutcome, verbose bool) jsonResult {
 		StatusCode: r.StatusCode,
 		Headers:    map[string][]string(r.Headers),
 		Body:       string(r.Body),
+	}
+	if o.DownloadPath != "" {
+		out.Response.Body = ""
+		out.Response.DownloadPath = o.DownloadPath
 	}
 	if verbose {
 		out.Response.TLS = toJSONTLS(r.TLS)
