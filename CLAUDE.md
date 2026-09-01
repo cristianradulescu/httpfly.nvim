@@ -19,6 +19,11 @@ There is no build step and no test suite — this is a small, dependency-free
 Lua plugin. Verification is done by exercising modules directly through
 `nvim --headless` (see "Manual verification" below).
 
+Any user-visible change (new command, changed default, changed resolution
+behavior, etc.) must get an entry under `## [Unreleased]` in `CHANGELOG.md`
+(Keep a Changelog format, already in use there) as part of the same change
+— don't leave it for a separate pass.
+
 ## Runtime dependency
 
 The plugin assumes `httpfly` is installed and on `$PATH` (`go install
@@ -27,12 +32,21 @@ source — see httpfly's own `doc/installation.md`). The binary name is
 configurable via `require("httpfly").setup({ cmd = ... })`.
 
 httpfly resolves both `httpfly.env.json` and `.httpfly/state.json` relative
-to its own process's **current working directory only** — there's no
-upward directory search the way some other HTTP-file tools do. This plugin
-always invokes it with `cwd` set to the `.http` file's own directory
-(`runner.lua`'s `resolve_cwd()`), so `httpfly.env.json` has to sit right
-next to whichever `.http` files use it; a project with `.http` files nested
-below where the env file lives needs its own copy per directory.
+to its own process's **current working directory only** — httpfly itself
+does no upward directory search the way some other HTTP-file tools do. This
+plugin compensates by doing the upward search itself: `env.lua`'s
+`find_env_dir()` walks up from the `.http` file's own directory looking for
+`httpfly.env.json` (via `vim.fs.find(..., { upward = true })`), and
+`env.resolve_cwd()` returns that directory — falling back to the `.http`
+file's own directory if no env file is found anywhere upward — as the `cwd`
+this plugin always launches httpfly with. This lets one `httpfly.env.json`
+at a project's root serve `.http` files nested arbitrarily far below it
+(e.g. `v1/request.http`, `v2/request.http`); a subtree that needs a
+genuinely different environment file still just keeps its own copy closer
+to those `.http` files, which shadows the root one for anything under it.
+Because `.httpfly/state.json` is also resolved relative to that same `cwd`,
+persisted `client.global` state is shared by every `.http` file under the
+env file's directory, not scoped per subdirectory.
 
 ## Architecture
 
@@ -44,11 +58,12 @@ Request flow, end to end:
 2. `lua/httpfly/env.lua` resolves which httpfly environment (a key under
    `httpfly.env.json`'s `"environments"` object) applies to the current
    buffer. Because httpfly itself does no upward search (see above),
-   `env_file_for_buf()` just checks for `httpfly.env.json` directly in the
-   buffer's own directory — no `vim.fs.find(upward = true)` walk — and
-   keeps the selected environment name in a module-local table **keyed by
-   that env file's path**, not globally, so switching directories/projects
-   doesn't bleed state. `:HttpEnv` with no argument opens a `vim.ui.select`
+   `env_file_for_buf()` does one itself — `vim.fs.find(config.options.env_file,
+   { path = dir, upward = true })` from the buffer's own directory up to the
+   filesystem root — and keeps the selected environment name in a
+   module-local table **keyed by that env file's path**, not globally, so
+   switching directories/projects doesn't bleed state. `:HttpEnv` with no
+   argument opens a `vim.ui.select`
    picker over `read_env_names()`'s result (the `environments` object's
    keys — `"shared"` isn't itself selectable, same as httpfly's own CLI
    rejecting `-env shared`). `:HttpEnv <name>` sets it directly, without
@@ -72,8 +87,10 @@ Request flow, end to end:
      more.
 3. `lua/httpfly/runner.lua` builds the httpfly command
    (`httpfly run -json [-env E] [-name X] <file>`) and runs it with
-   `vim.system`, with `cwd` set to the `.http` file's own directory
-   (`resolve_cwd()`) — the only directory httpfly itself will look in for
+   `vim.system`, with `cwd` set to `env.resolve_cwd()` — the directory this
+   plugin's own upward search (see above) found `httpfly.env.json` in, or
+   the `.http` file's own directory if none was found — since that's the
+   only directory httpfly itself will look in for
    `httpfly.env.json`/`.httpfly/state.json`. Unlike the previous
    httpyac-backed version, no extra environment variables need to be
    injected into the child process at all: httpfly persists
@@ -220,9 +237,9 @@ Request flow, end to end:
    rendered output to `<dir>/.httpfly/history/<YYYYMMDD-HHMMSS-microseconds>
    .{md,txt}` (extension matches `config.options.output_style`) via
    `lua/httpfly/history.lua`, where `<dir>` is the same directory
-   `resolve_cwd()` computed for this send — the `.http` file's own
-   directory, matching where httpfly's own `.httpfly/state.json` lives, so
-   a project only needs one `.gitignore` entry to cover both. History is
+   `env.resolve_cwd()` computed for this send, matching where httpfly's own
+   `.httpfly/state.json` lives, so a project only needs one `.gitignore`
+   entry to cover both. History is
    only written when httpfly's JSON parsed successfully — the raw-fallback
    path (httpfly crashed before emitting JSON) is not saved since there's
    nothing useful to keep.

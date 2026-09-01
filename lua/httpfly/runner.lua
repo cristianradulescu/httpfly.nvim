@@ -231,15 +231,6 @@ local function require_file()
   return file
 end
 
--- httpfly resolves httpfly.env.json and .httpfly/state.json relative to
--- its own process cwd, with no upward search -- so the cwd passed to
--- vim.system has to be exactly the directory a real `httpfly run` from
--- there would use. The .http file's own directory is the only sensible
--- choice, since that's also where env.lua checks for httpfly.env.json.
-local function resolve_cwd(file)
-  return vim.fn.fnamemodify(file, ":h")
-end
-
 -- parses every request block in the buffer, mirroring httpfly's own
 -- parser: the file is split on lines that are exactly "###" (the segment
 -- before the first one is the prelude and never carries a @name). For
@@ -355,7 +346,7 @@ function M.send_current()
     vim.notify("httpfly: no request (@name) found under cursor", vim.log.levels.WARN)
     return
   end
-  local cwd = resolve_cwd(file)
+  local cwd = env.resolve_cwd(0)
   local download_path = resolve_download_path(block, cwd)
   run(build_cmd(file, block.name, download_path), cwd)
 end
@@ -365,7 +356,7 @@ function M.send_all()
   if not file then
     return
   end
-  local cwd = resolve_cwd(file)
+  local cwd = env.resolve_cwd(0)
   local blocks = parse_blocks(0)
 
   local has_download = false
@@ -400,7 +391,7 @@ function M.session_clear()
     vim.notify("httpfly: buffer has no file", vim.log.levels.WARN)
     return
   end
-  if session.clear(resolve_cwd(file)) then
+  if session.clear(env.resolve_cwd(0)) then
     vim.notify("httpfly: session cleared", vim.log.levels.INFO)
   else
     vim.notify("httpfly: no session file to clear", vim.log.levels.INFO)

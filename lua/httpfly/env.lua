@@ -18,18 +18,27 @@ local function read_json(path)
   return decoded
 end
 
--- httpfly resolves httpfly.env.json (and .httpfly/state.json) via its own
--- process cwd only, no upward search -- so the plugin must check exactly
--- the directory it will pass to vim.system as cwd (the .http file's own
--- directory, same as runner.lua's resolve_cwd()), or :HttpEnv could
--- show/pick an environment a real `httpfly run` from that directory can't
--- actually see.
 local function dir_for_buf(bufnr)
   return vim.fn.fnamemodify(vim.api.nvim_buf_get_name(bufnr), ":h")
 end
 
-local function env_file_path(dir)
-  return dir .. "/" .. config.options.env_file
+-- httpfly resolves httpfly.env.json (and .httpfly/state.json) via its own
+-- process cwd only, no upward search of its own -- so this plugin instead
+-- does the upward search itself (from the .http file's own directory to
+-- the filesystem root) to find where the env file actually lives, and then
+-- always launches httpfly with that directory as cwd (M.resolve_cwd()
+-- below). This lets a project keep one httpfly.env.json at its root while
+-- .http files live in subdirectories (e.g. v1/request.http,
+-- v2/request.http) -- without this, a real `httpfly run` from a subdir
+-- wouldn't see the root env file at all. When no env file is found
+-- anywhere upward, cwd falls back to the .http file's own directory,
+-- matching the plugin's previous behavior.
+local function find_env_dir(dir)
+  local found = vim.fs.find(config.options.env_file, { path = dir, upward = true })[1]
+  if not found then
+    return nil
+  end
+  return vim.fn.fnamemodify(found, ":h")
 end
 
 -- environment names declared under the file's "environments" key; "shared"
@@ -71,11 +80,24 @@ end
 function M.env_file_for_buf(bufnr)
   bufnr = bufnr or 0
   local dir = dir_for_buf(bufnr)
-  local path = env_file_path(dir)
-  if vim.fn.filereadable(path) == 0 then
+  local env_dir = find_env_dir(dir)
+  if not env_dir then
     return nil
   end
-  return path
+  return env_dir .. "/" .. config.options.env_file
+end
+
+-- the directory httpfly itself must be launched with as cwd for this
+-- buffer: the directory containing the env file found via the upward
+-- search above, or the .http file's own directory if none was found.
+-- runner.lua uses this same directory for -- and only for -- vim.system's
+-- cwd, so httpfly.env.json and .httpfly/state.json (both cwd-relative on
+-- httpfly's side) are read from/written to the same place this plugin
+-- just looked in.
+function M.resolve_cwd(bufnr)
+  bufnr = bufnr or 0
+  local dir = dir_for_buf(bufnr)
+  return find_env_dir(dir) or dir
 end
 
 function M.get(bufnr)
@@ -133,7 +155,7 @@ function M.vars(bufnr)
     env_keys[k] = true
   end
 
-  local dir = dir_for_buf(bufnr)
+  local dir = M.resolve_cwd(bufnr)
   local session_vars = session.load(dir, name)
   local session_keys = {}
   for k, v in pairs(session_vars) do

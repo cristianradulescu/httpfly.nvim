@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `httpfly.env.json` no longer has to sit directly alongside the `.http`
+  files that use it. The plugin now searches upward from a `.http` file's
+  own directory to find it (`vim.fs.find(..., upward = true)`) and launches
+  httpfly with that directory as `cwd`, so one env file at a project's root
+  can serve `.http` files nested arbitrarily far below it (e.g.
+  `v1/request.http`, `v2/request.http`). `.httpfly/state.json` and
+  `.httpfly/history/` follow the same resolved directory, so persisted
+  session state and history are shared by every `.http` file under it.
+  Falls back to the `.http` file's own directory when no env file is found
+  anywhere upward, matching the previous behavior.
+
 ## [0.2.0] - 2026-08-24
 
 ### Added
