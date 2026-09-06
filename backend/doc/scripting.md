@@ -85,7 +85,7 @@ not on every run) — see the example below.
 
 State lives in `.httpfly/state.json` **in the current working
 directory** — wherever you launch `httpfly` from, not the directory
-containing the `.http` file (same rule as `httpfly.env.json`; see
+containing the `.http` file (same rule as `http-client.env.json`; see
 [Environments](environments.md)) — scoped per **environment** (`-env dev`
 and `-env prod` never share values; no `-env` gets its own bucket too).
 This means several `.http` files in different subdirectories can share

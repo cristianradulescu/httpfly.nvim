@@ -39,7 +39,7 @@ func runCommand(args []string, stdout io.Writer) error {
 	var verbose bool
 	fs.BoolVar(&verbose, "verbose", false, "also print TLS connection details (version, cipher, peer certificate)")
 	fs.BoolVar(&verbose, "v", false, "shorthand for -verbose")
-	envName := fs.String("env", "", "apply variables from the named environment in httpfly.env.json")
+	envName := fs.String("env", "", "apply variables from the named environment in http-client.env.json")
 	download := fs.String("download", "", "save the response body to this file instead of printing it (only one request may be selected; the file's parent directory must already exist)")
 	if err := fs.Parse(args); err != nil {
 		return err

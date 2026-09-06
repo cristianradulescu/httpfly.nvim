@@ -6,7 +6,7 @@ import (
 	"github.com/cristianradulescu/httpfly/internal/env"
 )
 
-// configDir returns the directory httpfly looks in for httpfly.env.json
+// configDir returns the directory httpfly looks in for http-client.env.json
 // and creates/reads .httpfly/ in: the current working directory (where
 // the httpfly binary was launched), not the directory containing the
 // .http file being acted on. This lets several .http files in different
@@ -18,7 +18,7 @@ func configDir() (string, error) {
 }
 
 // resolveEnvVars returns the variables for the named environment, looked
-// up in configDir's httpfly.env.json, or nil if name is empty (no -env
+// up in configDir's http-client.env.json, or nil if name is empty (no -env
 // flag given).
 func resolveEnvVars(name string) (map[string]string, error) {
 	if name == "" {

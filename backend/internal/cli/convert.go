@@ -85,7 +85,7 @@ func convertToCurlCommand(args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("convert to-curl", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	name := fs.String("name", "", "only convert the request with this @name (required if the file has more than one request)")
-	envName := fs.String("env", "", "apply variables from the named environment in httpfly.env.json")
+	envName := fs.String("env", "", "apply variables from the named environment in http-client.env.json")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}

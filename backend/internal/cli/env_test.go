@@ -39,7 +39,7 @@ func writeEnvFile(t *testing.T, dir, content string) {
 
 func TestResolveEnvVarsUsesCurrentWorkingDirectory(t *testing.T) {
 	parent := t.TempDir()
-	writeEnvFile(t, parent, `{"environments": {"dev": {"host": "http://parent-dir"}}}`)
+	writeEnvFile(t, parent, `{"dev": {"host": "http://parent-dir"}}`)
 	chdir(t, parent)
 
 	vars, err := resolveEnvVars("dev")
@@ -85,7 +85,7 @@ func TestRunCreatesStateInCurrentWorkingDirectoryNotHTTPFilesDirectory(t *testin
 
 func TestResolveEnvVarsIgnoresHTTPFilesOwnDirectory(t *testing.T) {
 	parent := t.TempDir()
-	writeEnvFile(t, parent, `{"environments": {"dev": {"host": "http://parent-dir"}}}`)
+	writeEnvFile(t, parent, `{"dev": {"host": "http://parent-dir"}}`)
 
 	// An env file physically next to the .http file must NOT be picked up
 	// -- only the current working directory's counts.
@@ -93,7 +93,7 @@ func TestResolveEnvVarsIgnoresHTTPFilesOwnDirectory(t *testing.T) {
 	if err := os.Mkdir(sub, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	writeEnvFile(t, sub, `{"environments": {"dev": {"host": "http://sibling-dir"}}}`)
+	writeEnvFile(t, sub, `{"dev": {"host": "http://sibling-dir"}}`)
 
 	chdir(t, parent)
 
