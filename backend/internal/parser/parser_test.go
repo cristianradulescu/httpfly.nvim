@@ -46,6 +46,17 @@ func TestParseBasicExample(t *testing.T) {
 			RawHeaders: []httpfile.Header{{Name: "Content-Type", Value: "application/json"}},
 			RawBody:    "{\n  \"name\": \"John\",\n  \"greeting\": \"Hello\"\n}",
 		},
+		{
+			Name:       "Name in separator",
+			Method:     "GET",
+			URL:        "http://localhost:8080/get?greeting=hello-again",
+			Proto:      "HTTP/1.1",
+			Headers:    []httpfile.Header{{Name: "Accept", Value: "application/json"}},
+			Lang:       "lua",
+			Variables:  map[string]string{},
+			RawURL:     "http://localhost:8080/get?greeting=hello-again",
+			RawHeaders: []httpfile.Header{{Name: "Accept", Value: "application/json"}},
+		},
 	}
 
 	if len(got.Requests) != len(want) {
@@ -69,6 +80,39 @@ func TestParseNoTrailingBody(t *testing.T) {
 	}
 	if f.Requests[0].Body != "" {
 		t.Errorf("Body = %q, want empty", f.Requests[0].Body)
+	}
+}
+
+func TestParseNameFromSeparatorLine(t *testing.T) {
+	src := "### GetUsers\nGET http://localhost:8080/get HTTP/1.1\n"
+	f, err := Parse(strings.NewReader(src))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if len(f.Requests) != 1 {
+		t.Fatalf("got %d requests, want 1", len(f.Requests))
+	}
+	if got, want := f.Requests[0].Name, "GetUsers"; got != want {
+		t.Errorf("Name = %q, want %q", got, want)
+	}
+}
+
+// A "###"-prefixed line anywhere -- including inside a body -- starts a new
+// block, matching JetBrains HTTP Client's own behavior. This is a known,
+// accepted trade-off of the plain-text format (see doc/http-file-format.md),
+// not something httpfly tries to escape or detect.
+func TestParseHashHashHashInsideBodySplitsIntoNewBlock(t *testing.T) {
+	src := "###\n# @name Get\nPOST http://localhost:8080/post HTTP/1.1\n\n" +
+		"### not a real separator, just markdown in the body\nmore body text\n"
+	result, err := Analyze(strings.NewReader(src))
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	if len(result.Blocks) != 2 {
+		t.Fatalf("got %d blocks, want 2 (the body's \"###\" line splits into an extra block): %+v", len(result.Blocks), result.Blocks)
+	}
+	if got, want := result.Blocks[0].Request.Body, ""; got != want {
+		t.Errorf("first block Body = %q, want %q (the \"###\" line and everything after it split off)", got, want)
 	}
 }
 

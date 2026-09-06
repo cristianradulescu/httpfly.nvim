@@ -47,6 +47,49 @@ func TestAnalyzeEmptyNameDoesNotAlsoErrorAsMissing(t *testing.T) {
 	}
 }
 
+func TestAnalyzeNameFromSeparatorLine(t *testing.T) {
+	src := "### GetUsers\nGET http://localhost:8080/get HTTP/1.1\n"
+	result, err := Analyze(strings.NewReader(src))
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	if result.HasErrors() {
+		t.Fatalf("HasErrors() = true, want false: %+v", result.Blocks[0].Issues)
+	}
+	if got, want := result.Blocks[0].Request.Name, "GetUsers"; got != want {
+		t.Errorf("Name = %q, want %q", got, want)
+	}
+}
+
+func TestAnalyzeNameFromSeparatorLineMatchingExplicitNameIsFine(t *testing.T) {
+	src := "### GetUsers\n# @name GetUsers\nGET http://localhost:8080/get HTTP/1.1\n"
+	result, err := Analyze(strings.NewReader(src))
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	if result.HasErrors() {
+		t.Fatalf("HasErrors() = true, want false: %+v", result.Blocks[0].Issues)
+	}
+	if got, want := result.Blocks[0].Request.Name, "GetUsers"; got != want {
+		t.Errorf("Name = %q, want %q", got, want)
+	}
+}
+
+func TestAnalyzeNameConflictBetweenSeparatorAndMetadataErrors(t *testing.T) {
+	src := "### Foo\n# @name Bar\nGET http://localhost:8080/get HTTP/1.1\n"
+	result, err := Analyze(strings.NewReader(src))
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	issue := findIssue(result.Blocks[0].Issues, "metadata:name")
+	if issue == nil || issue.Severity != SeverityError {
+		t.Fatalf("issue = %+v, want an error for conflicting names", issue)
+	}
+	if !result.HasErrors() {
+		t.Errorf("HasErrors() = false, want true")
+	}
+}
+
 func TestAnalyzeBasicExampleHasNoIssues(t *testing.T) {
 	src := "###\n# @name Get\nGET http://localhost:8080/get?greeting=hello HTTP/1.1\nAccept: application/json\n"
 	result, err := Analyze(strings.NewReader(src))

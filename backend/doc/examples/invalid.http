@@ -63,3 +63,8 @@ GET http://localhost:8080/get?token={{missing_var}} HTTP/1.1
 # @proxy is metadata, so it needs a scheme+host like any other URL. [ERROR]
 # @proxy localhost:3128
 GET http://localhost:8080/get HTTP/1.1
+
+
+### DuplicatedName1
+# @name DuplicatedName2
+GET http://localhost:8080/get HTTP/1.1

@@ -40,13 +40,25 @@ A block is, in order:
 `###` (or the whole file, if there's no `###` at all) is the
 [prelude](#prelude-global-vs-local), not a request.
 
+Any line starting with `###`, anywhere in the file, starts a new block —
+including one that appears inside a request body (e.g. a markdown `###
+Heading` in a text body). This matches JetBrains HTTP Client's own
+behavior; there's no way to escape a literal `###` inside a body. If a
+body needs one, put it in a file loaded some other way rather than inline.
+
+Trailing text on the separator line itself is shorthand for that block's
+`@name`: `### GetUsers` is equivalent to a bare `###` followed by
+`# @name GetUsers`. An explicit `# @name` line later in the same block is
+fine as long as it matches; if it names something *different*, that's an
+error (`metadata:name`) rather than one silently overwriting the other.
+
 ## Metadata
 
 `# @key value` comment lines attach metadata to a request:
 
 | Key | Required | Scope | Meaning |
 |---|---|---|---|
-| `name` | **Yes** | request only | The request's identifier — used by `-name` on the CLI. Every request must have a non-empty `@name`; it's an error at file-prelude scope (there's no such thing as a "global name"). |
+| `name` | **Yes** | request only | The request's identifier — used by `-name` on the CLI. Every request must have a non-empty `@name`, supplied either as `# @name Value` or as trailing text on the block's `###` separator line (see [above](#requests)); it's an error at file-prelude scope (there's no such thing as a "global name"). |
 | `lang` | No | request only | Names the scripting language for pre-/post-request scripts. `lua` is the only supported value (and the default if omitted); anything else is a warning and falls back to Lua. |
 | `proxy` | No | request or global | An absolute proxy URL (`scheme://host[:port]`) to send this request through. See [below](#proxy). |
 
@@ -155,7 +167,7 @@ the report format). At a glance:
 
 | Severity | Examples |
 |---|---|
-| `ERROR` (blocks the request / fails validation) | Missing or empty `@name`; request line that isn't `METHOD URL [PROTO]`; relative URL; malformed header line (no `:`); `@proxy` that isn't absolute; `@name`/`@lang` declared in the prelude; a malformed or unterminated script block; a script with invalid Lua syntax. |
+| `ERROR` (blocks the request / fails validation) | Missing or empty `@name`; a separator-line name that conflicts with an explicit `# @name` in the same block; request line that isn't `METHOD URL [PROTO]`; relative URL; malformed header line (no `:`); `@proxy` that isn't absolute; `@name`/`@lang` declared in the prelude; a malformed or unterminated script block; a script with invalid Lua syntax. |
 | `WARN` (still usable, just worth knowing) | Unknown `@key`; non-standard HTTP method; unrecognized `PROTO` string; `@lang` set to something other than `lua`; undefined `{{variable}}`. |
 
 `doc/examples/invalid.http` in this repo demonstrates each of these, one

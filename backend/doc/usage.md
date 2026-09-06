@@ -162,7 +162,7 @@ exits non-zero, since a command is required).
 
 | Flag | Commands | Meaning |
 |---|---|---|
-| `-name X` | `run`, `validate` | Restrict to the single request declared with `# @name X`. Errors if no request has that name. |
+| `-name X` | `run`, `validate` | Restrict to the single request named `X` (via `# @name X` or `### X`). Errors if no request has that name. |
 | `-name X` | `convert from-curl` | Sets the generated request's `@name` (different meaning than for `run`/`validate` — there's no existing request to restrict to). Defaults to `ConvertedRequest` if omitted. |
 | `-name X` | `convert to-curl` | Picks which request to convert. Required if the file has more than one. |
 | `-env E` | `run`, `validate`, `convert to-curl` | Apply variables from the environment named `E` in `httpfly.env.json`, found in the current working directory (not `<file.http>`'s own directory). See [Environments](environments.md). |

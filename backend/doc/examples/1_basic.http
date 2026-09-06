@@ -21,3 +21,7 @@ Content-Type: application/json
   "name": "John",
   "greeting": "Hello"
 }
+
+### Name in separator
+GET http://localhost:8080/get?greeting=hello-again HTTP/1.1
+Accept: application/json

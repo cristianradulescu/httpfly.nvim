@@ -188,6 +188,15 @@ func validateBlock(lines []string, globalVars, globalMetadata map[string]string)
 		if strings.HasPrefix(line, "#") {
 			if key, value, isMetadata := parseMetadata(line); isMetadata {
 				issues = append(issues, validateMetadataInScope(key, value, scopeLocal)...)
+
+				// prevent duplicated name metadata
+				if key == "name" && nameDeclared && req.Name != value {
+					issues = append(issues, Issue{
+						Element:  "metadata:name",
+						Severity: SeverityError,
+						Message:  fmt.Sprintf("duplicated @name metadata: `%s` / `%s`", req.Name, value),
+					})
+				}
 				if key == "name" {
 					nameDeclared = true
 					req.Name = value

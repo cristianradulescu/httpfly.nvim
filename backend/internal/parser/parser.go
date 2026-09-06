@@ -110,10 +110,9 @@ func splitBlocks(r io.Reader) ([][]string, error) {
 
 	for scanner.Scan() {
 		line := scanner.Text()
-		if strings.TrimSpace(line) == separator {
+		if strings.HasPrefix(line, separator) {
 			blocks = append(blocks, current)
 			current = nil
-			continue
 		}
 		current = append(current, line)
 	}
@@ -124,8 +123,14 @@ func splitBlocks(r io.Reader) ([][]string, error) {
 	return blocks, nil
 }
 
-// parseMetadata recognizes "# @key value" comment lines.
+// parseMetadata recognizes "# @key value" comment lines and the "name"
+// metadata from separator line "### MyReqName"
 func parseMetadata(line string) (key, value string, ok bool) {
+	// parse request name from separator line
+	if strings.HasPrefix(line, separator) && len(strings.TrimSpace(line)) > 3 {
+		return "name", strings.TrimSpace(strings.TrimPrefix(line, separator)), true
+	}
+
 	rest := strings.TrimSpace(strings.TrimPrefix(line, "#"))
 	if !strings.HasPrefix(rest, "@") {
 		return "", "", false

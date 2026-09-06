@@ -14,8 +14,9 @@ GET https://example.com/ HTTP/1.1
 Accept: text/html
 ```
 
-Every request needs a `# @name` — it's the identifier httpfly (and you) use
-to refer to that request, e.g. with `-name`.
+Every request needs a name — it's the identifier httpfly (and you) use to
+refer to that request, e.g. with `-name`. `# @name GetExample` above works,
+or you can fold it into the separator line instead: `### GetExample`.
 
 ## 2. Validate it first
 
