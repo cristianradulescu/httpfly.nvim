@@ -82,12 +82,13 @@ add it to each request that needs it instead.
 ## Variables
 
 `{{name}}` anywhere in the URL, a header value, or the body is replaced
-with a variable's value before the request is sent. `key = value` lines
-(no `@`, no `#` — that prefix is reserved for metadata) declare variables:
+with a variable's value before the request is sent. `@key = value` lines
+(not to be confused with `# @key value` metadata, which is `#`-prefixed)
+declare variables:
 
 ```http
-host = http://localhost:8080
-greeting = hello
+@host = http://localhost:8080
+@greeting = hello
 
 ###
 # @name Get
@@ -96,14 +97,14 @@ GET {{host}}/get?greeting={{greeting}} HTTP/1.1
 
 ### Prelude: global vs. local
 
-A `key = value` line before the first `###` declares a **global**
+An `@key = value` line before the first `###` declares a **global**
 variable — the default for every request in the file. The same kind of
 line *inside* a request block declares a variable **local** to that block
 only, overriding the global value just for that one request (it never
 leaks into other blocks):
 
 ```http
-env = prod
+@env = prod
 
 ###
 # @name UsesGlobal
@@ -111,7 +112,7 @@ GET http://localhost:8080/get?env={{env}} HTTP/1.1   # -> env=prod
 
 ###
 # @name UsesLocal
-env = dev
+@env = dev
 GET http://localhost:8080/get?env={{env}} HTTP/1.1   # -> env=dev
 ```
 
@@ -131,7 +132,7 @@ automatically, so a value containing a space or `&` doesn't corrupt the
 request:
 
 ```http
-greeting = Hello again
+@greeting = Hello again
 
 GET http://localhost:8080/get?greeting={{greeting}} HTTP/1.1
 # sent as: ?greeting=Hello+again

@@ -36,7 +36,7 @@ func TestResolveReResolvesAgainstUpdatedVars(t *testing.T) {
 }
 
 func TestResolveLocalVariableStillOverridesWhateverVarsAreGiven(t *testing.T) {
-	src := "###\n# @name Get\nenv = local-override\nGET http://localhost:8080/get?env={{env}} HTTP/1.1\n"
+	src := "###\n# @name Get\n@env = local-override\nGET http://localhost:8080/get?env={{env}} HTTP/1.1\n"
 	result, err := Analyze(strings.NewReader(src))
 	if err != nil {
 		t.Fatalf("Analyze: %v", err)

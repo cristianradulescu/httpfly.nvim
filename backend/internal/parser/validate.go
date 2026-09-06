@@ -128,7 +128,7 @@ var localOnlyMetadata = map[string]bool{
 // enforced for it beyond that existing warning.
 var knownMetadataKeys = map[string]bool{"name": true, "lang": true, "proxy": true}
 
-// parsePrelude parses the file segment before the first "###": "key = value"
+// parsePrelude parses the file segment before the first "###": "@key = value"
 // lines become global variables, "# @key value" lines become global
 // metadata (subject to the same scope rules as per-request metadata), and
 // anything else is very likely a mistake (e.g. a request missing its

@@ -32,7 +32,7 @@ type Request struct {
 	// this request's response is received, or "" if there is none.
 	PostScript string
 
-	// Variables holds this request's own local "key = value" declarations
+	// Variables holds this request's own local "@key = value" declarations
 	// (not merged with any other scope), so a caller can recompute the
 	// full variable set later (e.g. after a pre-request script changes a
 	// persisted global) and still have this request's local overrides win.

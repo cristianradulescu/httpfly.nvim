@@ -134,7 +134,7 @@ func TestAnalyzeUndefinedVariableWarns(t *testing.T) {
 }
 
 func TestAnalyzeResolvesFileScopedVariables(t *testing.T) {
-	src := "host = http://localhost:8080\ngreeting = hello\n\n###\n# @name Get\nGET {{host}}/get?greeting={{greeting}} HTTP/1.1\nAuthorization: Bearer {{host}}\n"
+	src := "@host = http://localhost:8080\n@greeting = hello\n\n###\n# @name Get\nGET {{host}}/get?greeting={{greeting}} HTTP/1.1\nAuthorization: Bearer {{host}}\n"
 	result, err := Analyze(strings.NewReader(src))
 	if err != nil {
 		t.Fatalf("Analyze: %v", err)
@@ -305,8 +305,8 @@ func TestAnalyzePostScriptBeforeRequestLineErrors(t *testing.T) {
 }
 
 func TestAnalyzeLocalVariableOverridesGlobalWithoutBleeding(t *testing.T) {
-	src := "env = prod\n\n" +
-		"###\n# @name UsesLocal\nenv = dev\nGET http://localhost:8080/get?env={{env}} HTTP/1.1\n\n" +
+	src := "@env = prod\n\n" +
+		"###\n# @name UsesLocal\n@env = dev\nGET http://localhost:8080/get?env={{env}} HTTP/1.1\n\n" +
 		"###\n# @name UsesGlobal\nGET http://localhost:8080/get?env={{env}} HTTP/1.1\n"
 	result, err := Analyze(strings.NewReader(src))
 	if err != nil {
@@ -400,8 +400,8 @@ func TestAnalyzeWithEnvPrecedence(t *testing.T) {
 	// host: file-global default, overridden by the environment.
 	// greeting: only in the environment.
 	// path: only local to the block, overriding nothing.
-	src := "host = http://localhost:8080\n\n" +
-		"###\n# @name Get\npath = get\nGET {{host}}/{{path}}?greeting={{greeting}} HTTP/1.1\n"
+	src := "@host = http://localhost:8080\n\n" +
+		"###\n# @name Get\n@path = get\nGET {{host}}/{{path}}?greeting={{greeting}} HTTP/1.1\n"
 	envVars := map[string]string{"host": "https://api.example.com", "greeting": "hi"}
 
 	result, err := AnalyzeWithEnv(strings.NewReader(src), envVars)
@@ -420,7 +420,7 @@ func TestAnalyzeWithEnvPrecedence(t *testing.T) {
 }
 
 func TestAnalyzeWithEnvLocalVariableStillWinsOverEnv(t *testing.T) {
-	src := "###\n# @name Get\nhost = http://local-override\nGET {{host}}/get HTTP/1.1\n"
+	src := "###\n# @name Get\n@host = http://local-override\nGET {{host}}/get HTTP/1.1\n"
 	envVars := map[string]string{"host": "https://api.example.com"}
 
 	result, err := AnalyzeWithEnv(strings.NewReader(src), envVars)

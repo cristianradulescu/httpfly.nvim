@@ -58,7 +58,7 @@ func ParseWithEnv(r io.Reader, envVars map[string]string) (*httpfile.File, error
 // instead of stopping at the first one. It only returns an error for
 // unrecoverable problems reading r.
 //
-// Content before the first "###" is the file's prelude: "key = value" lines
+// Content before the first "###" is the file's prelude: "@key = value" lines
 // there declare global variables, and "# @key value" lines declare global
 // metadata, both defaults inherited by every request unless a block
 // re-declares them locally. A file with no "###" separator at all has no
@@ -139,11 +139,9 @@ func parseMetadata(line string) (key, value string, ok bool) {
 	return key, value, true
 }
 
-var variablePattern = regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$`)
+var variablePattern = regexp.MustCompile(`^@([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$`)
 
-// parseVariableDef recognizes "key = value" lines (env-file style variable
-// declarations). The "@" prefix is reserved for metadata, so these aren't
-// prefixed at all.
+// parseVariableDef recognizes "@key=value" lines.
 func parseVariableDef(line string) (name, value string, ok bool) {
 	m := variablePattern.FindStringSubmatch(line)
 	if m == nil {

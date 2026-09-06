@@ -15,9 +15,9 @@
 # httpfly.env.json also declares a "shared" greeting, inherited by both
 # "dev" and "dev-alt-port" since neither environment overrides it itself.
 
-host = http://localhost:8080
-greeting = hello
-auth_token = demo-token-123
+@host = http://localhost:8080
+@greeting = hello
+@auth_token = demo-token-123
 
 ###
 # @name Get

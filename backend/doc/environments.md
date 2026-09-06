@@ -76,10 +76,10 @@ of which `.http` file you point at or where it lives.
 Environment variables sit in the middle of httpfly's variable precedence,
 highest to lowest:
 
-1. A request's own **local** `key = value` declaration
+1. A request's own **local** `@key = value` declaration
 2. The selected **environment**'s value (`shared`, overridden by the
    environment's own entry)
-3. The `.http` file's **global** (prelude) `key = value` declaration
+3. The `.http` file's **global** (prelude) `@key = value` declaration
 
 In other words: the file's own globals are the baseline default, an
 environment can override them, and any one request can still override

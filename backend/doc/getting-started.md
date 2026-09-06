@@ -86,7 +86,7 @@ Content-Type: application/json
 Add a variable so the host isn't hardcoded three times over:
 
 ```http
-host = http://localhost:8080
+@host = http://localhost:8080
 
 ###
 # @name CreateUser

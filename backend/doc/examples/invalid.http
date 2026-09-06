@@ -55,7 +55,7 @@ GET http://localhost:8080/get WEIRD/9
 
 ###
 # @name UndefinedVariable
-# {{missing_var}} has no matching "missing_var = ..." declaration. [WARN]
+# {{missing_var}} has no matching "@missing_var = ..." declaration. [WARN]
 GET http://localhost:8080/get?token={{missing_var}} HTTP/1.1
 
 ###
