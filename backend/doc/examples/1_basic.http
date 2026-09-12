@@ -7,8 +7,9 @@
 # post-request scripting and a login -> token -> auth chain, 4_download.http
 # for saving a binary response to a file, 5_forms.http for url-encoded and
 # multipart bodies, 6_shell_auth.http for shelling out to compute a value
-# in a pre-request script, and 7_save_response.http for saving a response
-# to disk yourself from a post-request script.
+# in a pre-request script, 7_save_response.http for saving a response
+# to disk yourself from a post-request script, and 8_file_upload.http for
+# sending a file's exact bytes as the body.
 
 ###
 # @name Get

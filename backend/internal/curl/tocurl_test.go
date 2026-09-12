@@ -130,3 +130,79 @@ func TestRoundTripThroughCurlAndBack(t *testing.T) {
 		}
 	}
 }
+
+func TestToCurlWholeBodyFileReferenceUsesDataBinary(t *testing.T) {
+	req := httpfile.Request{
+		Method:  "PUT",
+		URL:     "https://example.com/put",
+		Headers: []httpfile.Header{{Name: "Content-Type", Value: "image/png"}},
+		Body:    "\x89PNGbinarydata",
+		RawBody: "< ./photo.png",
+	}
+	got := ToCurl(req)
+	want := "curl 'https://example.com/put' \\\n" +
+		"  -X 'PUT' \\\n" +
+		"  -H 'Content-Type: image/png' \\\n" +
+		"  --data-binary '@./photo.png'\n"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestToCurlMultipartBodyReconstructsFormFlags(t *testing.T) {
+	req := httpfile.Request{
+		Method: "POST",
+		URL:    "https://example.com/post",
+		Headers: []httpfile.Header{
+			{Name: "Content-Type", Value: "multipart/form-data; boundary=B"},
+		},
+		RawBody: "--B\n" +
+			"Content-Disposition: form-data; name=\"avatar\"; filename=\"photo.png\"\n" +
+			"Content-Type: image/png\n\n" +
+			"< ./photo.png\n" +
+			"--B\n" +
+			"Content-Disposition: form-data; name=\"username\"\n\n" +
+			"alice\n" +
+			"--B--",
+	}
+	got := ToCurl(req)
+	want := "curl 'https://example.com/post' \\\n" +
+		"  -X 'POST' \\\n" +
+		"  -F 'avatar=@./photo.png;type=image/png' \\\n" +
+		"  -F 'username=alice'\n"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+// TestRoundTripFileUploadThroughCurlAndBack mirrors
+// TestRoundTripThroughCurlAndBack but for a "-F" file-upload command --
+// Parse must turn it into httpfly's "< path" body syntax, and ToCurl must
+// turn that back into an equivalent "-F" command, not inline any content.
+func TestRoundTripFileUploadThroughCurlAndBack(t *testing.T) {
+	original := `curl 'https://example.com/upload' -F 'avatar=@photo.png;type=image/png' -F 'username=alice'`
+
+	first, warnings, err := Parse(original)
+	if err != nil {
+		t.Fatalf("Parse(original): %v", err)
+	}
+	if len(warnings) != 0 {
+		t.Fatalf("warnings = %v, want none", warnings)
+	}
+
+	regenerated := ToCurl(first)
+	if !strings.Contains(regenerated, "-F") {
+		t.Fatalf("regenerated = %q, want it to use -F, not inline the multipart body", regenerated)
+	}
+
+	second, warnings, err := Parse(regenerated)
+	if err != nil {
+		t.Fatalf("Parse(regenerated): %v\ngenerated command:\n%s", err, regenerated)
+	}
+	if len(warnings) != 0 {
+		t.Errorf("warnings = %v, want none", warnings)
+	}
+	if first.Body != second.Body {
+		t.Errorf("Body did not round-trip:\nfirst:  %q\nsecond: %q", first.Body, second.Body)
+	}
+}

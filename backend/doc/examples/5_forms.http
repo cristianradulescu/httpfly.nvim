@@ -1,12 +1,7 @@
 # Form submissions: regular (application/x-www-form-urlencoded) and
 # multipart (multipart/form-data with text fields), no scripting involved.
-#
-# httpfly's body is whatever text follows the blank line after headers,
-# sent byte-for-byte -- there's no "< ./path" file-inclusion syntax to pull
-# another file's content into a multipart part, so a real file upload isn't
-# expressible directly in a .http file here; build the multipart body from
-# a pre-request Lua script (ioutil.read_file(...), see 7_save_response.http
-# for the ioutil module) if you need one.
+# See 8_file_upload.http for a multipart part whose content is an actual
+# file's bytes, via "< ./path" -- these two fields are plain text instead.
 #
 # Run `make httpbin-up` first.
 

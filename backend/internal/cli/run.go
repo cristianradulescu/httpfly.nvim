@@ -180,16 +180,17 @@ func sendWithScripts(c *client.Client, req httpfile.Request, baseVars map[string
 
 // issuesAsFatal turns resolution issues into one error, prefixed by verb,
 // if req isn't safe to actually use: an outright error (e.g. an invalid
-// proxy URL), or a variable that's still undefined -- Analyze only ever
-// warns about that (a script might set it before the request is used),
-// but by the time a caller is about to send it, or export it as a final
-// artifact like a curl command, there's no more "might" left, so httpfly
-// treats it as fatal instead of silently producing something with a
-// literal "{{name}}" in it.
+// proxy URL), a variable that's still undefined, or a "< path/to/file"
+// body reference that couldn't be read -- Analyze only ever warns about
+// either of those (a script might set the variable, or create the file,
+// before the request is used), but by the time a caller is about to send
+// it, or export it as a final artifact like a curl command, there's no
+// more "might" left, so httpfly treats it as fatal instead of silently
+// producing something with a literal "{{name}}" or a truncated body in it.
 func issuesAsFatal(issues []parser.Issue, verb string) error {
 	var msgs []string
 	for _, issue := range issues {
-		if issue.Severity == parser.SeverityError || parser.IsUndefinedVariableIssue(issue) {
+		if issue.Severity == parser.SeverityError || parser.IsUndefinedVariableIssue(issue) || parser.IsMissingFileIssue(issue) {
 			msgs = append(msgs, fmt.Sprintf("%s: %s", issue.Element, issue.Message))
 		}
 	}

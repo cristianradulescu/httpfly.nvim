@@ -155,6 +155,48 @@ variable is substituted raw, so `{{host}}` holding a full
 `http://localhost:8080` prefix works as expected instead of having its `/`
 and `:` mangled into `%2F`/`%3A`.
 
+## File uploads
+
+A body line reading `< path/to/file` is replaced with that file's raw
+bytes (JetBrains HTTP Client's own convention) — no pre-request script
+needed to read a file in by hand:
+
+```http
+### RawUpload
+PUT http://localhost:8080/put HTTP/1.1
+Content-Type: image/png
+
+< ./photo.png
+```
+
+The same line shape works inside one part of a multipart body:
+
+```http
+### MultipartUpload
+POST http://localhost:8080/post HTTP/1.1
+Content-Type: multipart/form-data; boundary=WebAppBoundary
+
+--WebAppBoundary
+Content-Disposition: form-data; name="avatar"; filename="photo.png"
+Content-Type: image/png
+
+< ./photo.png
+--WebAppBoundary--
+```
+
+A relative path resolves against the current working directory — same
+rule as everything else httpfly reads from disk (see
+[Environments](environments.md)), not the `.http` file's own directory.
+The path can itself use `{{var}}` interpolation (e.g. `< ./{{env}}/cert.pem`).
+
+A file that can't be read is a warning at `validate` time (a pre-request
+script might still create it before the request is actually sent — same
+reasoning as an undefined `{{variable}}`), escalated to a hard error by
+`run`/`convert to-curl` immediately before it's actually needed.
+
+`convert from-curl`/`convert to-curl` understand this too — see
+[Usage](usage.md#convert-from-curl).
+
 ## Comments
 
 Any `#`-prefixed line that isn't `# @key value` metadata is a plain
@@ -168,7 +210,7 @@ the report format). At a glance:
 | Severity | Examples |
 |---|---|
 | `ERROR` (blocks the request / fails validation) | Missing or empty `@name`; a separator-line name that conflicts with an explicit `# @name` in the same block; request line that isn't `METHOD URL [PROTO]`; relative URL; malformed header line (no `:`); `@proxy` that isn't absolute; `@name`/`@lang` declared in the prelude; a malformed or unterminated script block; a script with invalid Lua syntax. |
-| `WARN` (still usable, just worth knowing) | Unknown `@key`; non-standard HTTP method; unrecognized `PROTO` string; `@lang` set to something other than `lua`; undefined `{{variable}}`. |
+| `WARN` (still usable, just worth knowing) | Unknown `@key`; non-standard HTTP method; unrecognized `PROTO` string; `@lang` set to something other than `lua`; undefined `{{variable}}`; a `< path/to/file` body reference that couldn't be read. |
 
 `doc/examples/invalid.http` in this repo demonstrates each of these, one
 issue per block — a good file to run `httpfly validate` against to see the

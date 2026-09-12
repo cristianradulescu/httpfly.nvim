@@ -93,3 +93,16 @@ func TestConvertToCurlUndefinedVariableIsFatal(t *testing.T) {
 		t.Errorf("stdout = %q, want nothing written when conversion fails", stdout.String())
 	}
 }
+
+func TestConvertToCurlMissingFileReferenceIsFatal(t *testing.T) {
+	path := writeHTTPFile(t, "###\n# @name Put\nPUT http://localhost:8080/put HTTP/1.1\n\n< ./does-not-exist.png\n")
+
+	var stdout, stderr bytes.Buffer
+	err := convertCommand([]string{"to-curl", path}, nil, &stdout, &stderr)
+	if err == nil {
+		t.Fatal("expected an error for a body file reference that can't be read")
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("stdout = %q, want nothing written when conversion fails", stdout.String())
+	}
+}

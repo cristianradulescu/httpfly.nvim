@@ -16,6 +16,7 @@ var flagsWithValue = map[string]bool{
 	"url": true, "X": true, "request": true,
 	"H": true, "header": true,
 	"d": true, "data": true, "data-ascii": true, "data-binary": true, "data-raw": true, "data-urlencode": true,
+	"F": true, "form": true,
 	"b": true, "cookie": true,
 	"A": true, "user-agent": true,
 	"e": true, "referer": true,
@@ -57,6 +58,8 @@ func Parse(cmd string) (httpfile.Request, []string, error) {
 	var req httpfile.Request
 	var explicitMethod, rawURL string
 	var dataParts []string
+	var fileDataPath string
+	var formParts []formPart
 	var warnings []string
 	positionalOnly := false
 
@@ -104,19 +107,42 @@ func Parse(cmd string) (httpfile.Request, []string, error) {
 			}
 			addHeader(&req, &warnings, hName, strings.TrimSpace(hValue))
 		case "d", "data", "data-ascii", "data-binary":
-			if strings.HasPrefix(value, "@") {
-				warnings = append(warnings, fmt.Sprintf("ignored \"%s %s\" (reading data from a file is not supported)", tok, value))
+			if path, ok := strings.CutPrefix(value, "@"); ok {
+				if fileDataPath != "" || len(dataParts) > 0 {
+					warnings = append(warnings, fmt.Sprintf("ignored \"%s %s\" (a file data part can't be combined with other -d/--data values)", tok, value))
+					continue
+				}
+				fileDataPath = path
+				continue
+			}
+			if fileDataPath != "" {
+				warnings = append(warnings, fmt.Sprintf("ignored \"%s %s\" (a file data part can't be combined with other -d/--data values)", tok, value))
 				continue
 			}
 			dataParts = append(dataParts, value)
 		case "data-raw":
+			if fileDataPath != "" {
+				warnings = append(warnings, fmt.Sprintf("ignored \"%s %s\" (a file data part can't be combined with other -d/--data values)", tok, value))
+				continue
+			}
 			dataParts = append(dataParts, value)
 		case "data-urlencode":
 			if strings.Contains(value, "@") {
 				warnings = append(warnings, fmt.Sprintf("ignored \"%s %s\" (reading data from a file is not supported)", tok, value))
 				continue
 			}
+			if fileDataPath != "" {
+				warnings = append(warnings, fmt.Sprintf("ignored \"%s %s\" (a file data part can't be combined with other -d/--data values)", tok, value))
+				continue
+			}
 			dataParts = append(dataParts, dataURLEncode(value))
+		case "F", "form":
+			part, err := parseFormField(value)
+			if err != nil {
+				warnings = append(warnings, fmt.Sprintf("ignored malformed \"%s %s\": %v", tok, value, err))
+				continue
+			}
+			formParts = append(formParts, part)
 		case "b", "cookie":
 			addHeader(&req, &warnings, "Cookie", value)
 		case "A", "user-agent":
@@ -155,15 +181,26 @@ func Parse(cmd string) (httpfile.Request, []string, error) {
 	}
 	req.URL = rawURL
 
+	if len(formParts) > 0 && (len(dataParts) > 0 || fileDataPath != "") {
+		warnings = append(warnings, "ignored -d/--data (mixing it with -F/--form is not supported; -F was used)")
+		dataParts, fileDataPath = nil, ""
+	}
+
 	switch {
 	case explicitMethod != "":
 		req.Method = strings.ToUpper(explicitMethod)
-	case len(dataParts) > 0:
+	case len(dataParts) > 0 || fileDataPath != "" || len(formParts) > 0:
 		req.Method = "POST"
 	default:
 		req.Method = "GET"
 	}
-	if len(dataParts) > 0 {
+	switch {
+	case len(formParts) > 0:
+		req.Body = formatMultipartBody(formParts, multipartBoundary)
+		addHeader(&req, &warnings, "Content-Type", "multipart/form-data; boundary="+multipartBoundary)
+	case fileDataPath != "":
+		req.Body = "< " + fileDataPath
+	case len(dataParts) > 0:
 		req.Body = strings.Join(dataParts, "&")
 	}
 

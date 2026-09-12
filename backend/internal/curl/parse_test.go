@@ -173,13 +173,39 @@ func TestParseDataURLEncode(t *testing.T) {
 	}
 }
 
-func TestParseDataFromFileIsWarnedAndSkipped(t *testing.T) {
+func TestParseDataFromFileBecomesFileReference(t *testing.T) {
 	req, warnings, err := Parse(`curl 'https://example.com' -d '@payload.json'`)
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
-	if req.Body != "" {
-		t.Errorf("Body = %q, want empty (file-based data unsupported)", req.Body)
+	if want := "< payload.json"; req.Body != want {
+		t.Errorf("Body = %q, want %q", req.Body, want)
+	}
+	if req.Method != "POST" {
+		t.Errorf("Method = %q, want POST (implied by -d)", req.Method)
+	}
+	if len(warnings) != 0 {
+		t.Errorf("warnings = %v, want none", warnings)
+	}
+}
+
+func TestParseDataBinaryFromFileBecomesFileReference(t *testing.T) {
+	req, _, err := Parse(`curl 'https://example.com' --data-binary '@photo.png'`)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if want := "< photo.png"; req.Body != want {
+		t.Errorf("Body = %q, want %q", req.Body, want)
+	}
+}
+
+func TestParseFileDataCombinedWithOtherDataIsWarnedAndDropped(t *testing.T) {
+	req, warnings, err := Parse(`curl 'https://example.com' -d 'a=b' -d '@payload.json'`)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if want := "a=b"; req.Body != want {
+		t.Errorf("Body = %q, want %q (the file part dropped, not silently corrupting the body)", req.Body, want)
 	}
 	if len(warnings) != 1 {
 		t.Fatalf("warnings = %v, want exactly one", warnings)
@@ -266,5 +292,97 @@ func TestParseRealChromeExample(t *testing.T) {
 	}
 	if want := "_octo=GH1.1.1156895386.1767446645; user_session=abc123"; byName["Cookie"] != want {
 		t.Errorf("Cookie = %q, want %q", byName["Cookie"], want)
+	}
+}
+
+func TestParseFormFileUpload(t *testing.T) {
+	req, warnings, err := Parse(`curl 'https://example.com/upload' -F 'avatar=@photo.png;type=image/png' -F 'username=alice'`)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if len(warnings) != 0 {
+		t.Errorf("warnings = %v, want none", warnings)
+	}
+	if req.Method != "POST" {
+		t.Errorf("Method = %q, want POST (implied by -F)", req.Method)
+	}
+
+	var contentType string
+	for _, h := range req.Headers {
+		if h.Name == "Content-Type" {
+			contentType = h.Value
+		}
+	}
+	if !strings.HasPrefix(contentType, "multipart/form-data; boundary=") {
+		t.Fatalf("Content-Type = %q, want a multipart/form-data value", contentType)
+	}
+	boundary := strings.TrimPrefix(contentType, "multipart/form-data; boundary=")
+
+	if !strings.Contains(req.Body, "--"+boundary) {
+		t.Errorf("Body = %q, want it delimited by boundary %q", req.Body, boundary)
+	}
+	if !strings.Contains(req.Body, `name="avatar"; filename="photo.png"`) {
+		t.Errorf("Body = %q, want avatar's Content-Disposition with filename", req.Body)
+	}
+	if !strings.Contains(req.Body, "Content-Type: image/png") {
+		t.Errorf("Body = %q, want avatar's explicit Content-Type", req.Body)
+	}
+	if !strings.Contains(req.Body, "< photo.png") {
+		t.Errorf("Body = %q, want a \"< photo.png\" file reference, not inlined content", req.Body)
+	}
+	if !strings.Contains(req.Body, "name=\"username\"") || !strings.Contains(req.Body, "alice") {
+		t.Errorf("Body = %q, want the plain username field", req.Body)
+	}
+	if !strings.HasSuffix(req.Body, "--"+boundary+"--") {
+		t.Errorf("Body = %q, want it to end with the closing boundary", req.Body)
+	}
+}
+
+func TestParseFormFilenameOverride(t *testing.T) {
+	req, _, err := Parse(`curl 'https://example.com' -F 'file=@/tmp/upload.bin;filename=report.pdf'`)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if !strings.Contains(req.Body, `filename="report.pdf"`) {
+		t.Errorf("Body = %q, want the filename= override applied", req.Body)
+	}
+	if !strings.Contains(req.Body, "< /tmp/upload.bin") {
+		t.Errorf("Body = %q, want the original path referenced", req.Body)
+	}
+}
+
+func TestParseFormFilenameDefaultsToPathBase(t *testing.T) {
+	req, _, err := Parse(`curl 'https://example.com' -F 'file=@/tmp/dir/photo.png'`)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if !strings.Contains(req.Body, `filename="photo.png"`) {
+		t.Errorf("Body = %q, want filename defaulted to the path's base name", req.Body)
+	}
+}
+
+func TestParseFormCombinedWithDataIsWarned(t *testing.T) {
+	req, warnings, err := Parse(`curl 'https://example.com' -F 'file=@photo.png' -d 'a=b'`)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if strings.Contains(req.Body, "a=b") {
+		t.Errorf("Body = %q, want the -d value dropped when combined with -F", req.Body)
+	}
+	if len(warnings) != 1 {
+		t.Fatalf("warnings = %v, want exactly one", warnings)
+	}
+}
+
+func TestParseMalformedFormFieldIsWarnedAndSkipped(t *testing.T) {
+	req, warnings, err := Parse(`curl 'https://example.com' -F 'not-a-valid-field'`)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if req.Body != "" {
+		t.Errorf("Body = %q, want empty (the malformed field skipped)", req.Body)
+	}
+	if len(warnings) != 1 {
+		t.Fatalf("warnings = %v, want exactly one", warnings)
 	}
 }

@@ -3,6 +3,7 @@ package parser
 import (
 	"fmt"
 	"net/url"
+	"os"
 	"regexp"
 	"strings"
 
@@ -55,6 +56,66 @@ const undefinedVariablePrefix = "undefined variable "
 // request is actually sent).
 func IsUndefinedVariableIssue(issue Issue) bool {
 	return strings.HasPrefix(issue.Message, undefinedVariablePrefix)
+}
+
+// missingFilePrefix is how a spliceFileReferences read-failure Issue's
+// Message always starts, so IsMissingFileIssue can recognize one without a
+// dedicated field on Issue -- mirrors undefinedVariablePrefix above.
+const missingFilePrefix = "could not read file "
+
+// IsMissingFileIssue reports whether issue is the "could not read file"
+// warning spliceFileReferences emits for a "< path/to/file" body reference
+// that couldn't be read. Like IsUndefinedVariableIssue, a caller
+// re-resolving right before actually sending a request may want to treat
+// this as fatal even though Analyze only ever reports it as a warning --
+// the file might not exist yet at validate/parse time but still get
+// created by a pre-request script before the request is actually sent.
+func IsMissingFileIssue(issue Issue) bool {
+	return strings.HasPrefix(issue.Message, missingFilePrefix)
+}
+
+// fileReferencePattern matches a body line that references a file to
+// splice in verbatim, JetBrains HTTP Client style: "< path/to/file".
+var fileReferencePattern = regexp.MustCompile(`^<\s+(\S.*)$`)
+
+// spliceFileReferences replaces every line in body that reads
+// "< path/to/file" with that file's raw bytes, so a request can send a
+// file's exact content -- a raw binary upload (the whole body is one such
+// line), or one part of a multipart body -- without a pre-request script
+// reading it in by hand. A relative path resolves against the process's
+// current working directory, same as everything else httpfly reads from
+// disk (os.ReadFile's own default; there's no separate ".http file's own
+// directory" rule here -- see the config-dir precedent in CLAUDE.md).
+//
+// A file that can't be read is a warning, not a hard error: a pre-request
+// script might still create it before the request is actually sent --
+// see IsMissingFileIssue, which lets a caller escalate this the same way
+// IsUndefinedVariableIssue already is.
+func spliceFileReferences(body string) (string, []Issue) {
+	if !strings.Contains(body, "<") {
+		return body, nil
+	}
+
+	lines := strings.Split(body, "\n")
+	var issues []Issue
+	for i, line := range lines {
+		m := fileReferencePattern.FindStringSubmatch(strings.TrimSpace(line))
+		if m == nil {
+			continue
+		}
+		path := m[1]
+		content, err := os.ReadFile(path)
+		if err != nil {
+			issues = append(issues, Issue{
+				Element:  "body",
+				Severity: SeverityWarning,
+				Message:  fmt.Sprintf("%s%q: %v", missingFilePrefix, path, err),
+			})
+			continue
+		}
+		lines[i] = string(content)
+	}
+	return strings.Join(lines, "\n"), issues
 }
 
 // BlockResult is the best-effort parsed request and validation issues for
@@ -363,10 +424,12 @@ func Resolve(req httpfile.Request, vars map[string]string) (httpfile.Request, []
 	}
 
 	body, missing := interpolate.Apply(req.RawBody, vars)
-	req.Body = body
 	for _, name := range missing {
 		issues = append(issues, undefinedVariableIssue("body", name))
 	}
+	body, fileIssues := spliceFileReferences(body)
+	issues = append(issues, fileIssues...)
+	req.Body = body
 
 	resolvedProxy, proxyIssues := resolveProxy(req.RawProxy, vars)
 	req.Proxy = resolvedProxy

@@ -106,9 +106,20 @@ common in real captured requests, e.g. `sec-ch-ua`, `if-none-match`).
 header; `-u`/`--user` becomes a Basic `Authorization` header; `-x`/`--proxy`
 becomes `@proxy`; `-d`/`--data*` becomes the body (and infers `POST` if no
 explicit `-X` is given, matching curl's own rule). A flag with no httpfly
-equivalent (`-k`/`--insecure`, `-o`/`--output`, reading data from a file
-with `@file`) is dropped with a warning printed to stderr — the generated
-`.http` file on stdout is never polluted by these warnings.
+equivalent (`-k`/`--insecure`, `-o`/`--output`) is dropped with a warning
+printed to stderr — the generated `.http` file on stdout is never polluted
+by these warnings.
+
+`-d @file`/`--data-binary @file` (curl's raw file-upload form) becomes a
+`< file` [file reference](http-file-format.md#file-uploads) in the body,
+read byte-for-byte at send time rather than inlined. `-F`/`--form` (curl's
+multipart form flag, e.g. `-F 'avatar=@photo.png;type=image/png' -F
+'username=alice'`) becomes a full `multipart/form-data` body — a plain
+`name=value` becomes a text field, `name=@path[;filename=X][;type=Y]`
+becomes a file field (`< path`, with `filename`/`type` on the part's
+`Content-Disposition`/`Content-Type`). `-F` can't be combined with
+`-d`/`--data*` (matching curl's own restriction) — the data flags are
+dropped with a warning if both are given.
 
 Only bash-style curl output is supported — `cmd.exe`/PowerShell "Copy as
 cURL" variants use different escaping and aren't handled.
@@ -144,6 +155,16 @@ become `-H 'Name: Value'` in their original order, `Body` becomes
 `--data-raw`, and `@proxy` becomes `-x`. A `Cookie` or Basic-auth
 `Authorization` header is emitted as a plain header, not un-mapped back
 into `-b`/`-u` — equally valid curl, without guessing intent.
+
+A body that's a `< path` [file reference](http-file-format.md#file-uploads)
+becomes `--data-binary @path` instead of `--data-raw` — the file is
+referenced by path in the generated command, not read and inlined. A
+`multipart/form-data` body built from `< path` file references becomes one
+`-F` flag per part instead (its `Content-Type` header is dropped, since
+`-F` sets its own). A `{{variable}}` inside such a path is passed through
+literally rather than resolved, since this reconstruction works from the
+request's still-templated body — use a literal, already-resolved path if
+you plan to `to-curl` it.
 
 ```sh
 httpfly convert to-curl -name Login doc/examples/3_scripting.http
