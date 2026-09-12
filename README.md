@@ -6,8 +6,10 @@ response as readable markdown.
 
 ![httpfly.nvim showing a request file next to the rendered response](screenshot.png)
 
-> **New here?** Check out `doc/examples/` for runnable `.http` files
-> covering everything below, from basic requests to scripting.
+> **New here?** Check out httpfly's own
+> [`doc/examples/`](https://github.com/cristianradulescu/httpfly/tree/main/doc/examples)
+> for runnable `.http` files covering everything below, from basic requests
+> to scripting.
 
 ## Scope
 
@@ -31,21 +33,14 @@ If you need JetBrains HTTP Client-style syntax (`###` separators,
 `httpfly.env.json` environments), that comes from httpfly — this plugin
 doesn't reimplement or restrict any of it.
 
-See `doc/examples/` for runnable `.http` files: `1_basic.http` (plain
-GET/POST), `2_scripting.http` (pre-/post-request scripting, including a
-login → token → authenticated-request chain), `3_environments.http` (uses
-`{{base_url}}`/`{{client_name}}` from the `httpfly.env.json` in that same
-directory — pick an environment with `:HttpEnv` first), `4_shell_auth.http`
-(a pre-request script shelling out to `generate-token.sh` and using its
-stdout as the request's token — for auth flows too complex to reimplement
-inline), `5_forms.http` (`application/x-www-form-urlencoded` and
-`multipart/form-data`), `6_save_response.http` (a post-request script
-saving a JSON/text response body to `/tmp` for its own sake — a
-snapshot/fixture, not a file the server means for you to download), and
-`7_download.http` (saving a response to disk, byte-perfect, via
-`# @download` — a binary one, an image, as well as a JSON one). They hit a
-local httpbin instance — run `make httpbin-up` first (requires Docker),
-`make httpbin-down` when done.
+See httpfly's own
+[`doc/examples/`](https://github.com/cristianradulescu/httpfly/tree/main/doc/examples)
+for runnable `.http` files covering plain GET/POST, pre-/post-request
+scripting (including a login → token → authenticated-request chain),
+environments, shelling out to a script for auth tokens, forms
+(`application/x-www-form-urlencoded` and `multipart/form-data`), saving a
+response body for its own sake, and downloading a response to disk via
+`# @download`.
 
 ## Requirements
 
@@ -170,9 +165,10 @@ file (e.g. once a token expires).
 `# @download` on a request saves its response body to disk, byte-perfect —
 for any response, not just binary content (an image, a PDF, a JSON body,
 plain text, ...). It's just as reliable as scripting `response.body`
-yourself (see "Scripting notes" and `6_save_response.http` below — Lua
-strings are byte arrays, so nothing is lost either way, even for binary
-content); the advantage of `# @download` is convenience — no script to
+yourself (see "Scripting notes" below, and httpfly's own
+`6_save_response.http` example — Lua strings are byte arrays, so nothing is
+lost either way, even for binary content); the advantage of `# @download`
+is convenience — no script to
 write, and it works the same from `:HttpSend` or `:HttpSendAll`. This is
 this plugin's own annotation, not httpfly's — httpfly itself has no
 per-request download marker, only a plain `-download F` flag on `run`,

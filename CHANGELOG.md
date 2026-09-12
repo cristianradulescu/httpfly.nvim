@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- `doc/examples/` (the runnable `.http` example files and their
+  `httpfly.env.json`) and the `Makefile`'s `httpbin-*` targets that
+  supported them — the examples now live in httpfly's own repo. `README.md`
+  points there instead.
+
 ### Changed
 
 - `httpfly.env.json` no longer has to sit directly alongside the `.http`
