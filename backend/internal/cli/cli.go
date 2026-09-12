@@ -31,7 +31,7 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	case "convert":
 		return convertCommand(args[1:], stdin, stdout, stderr)
 	case "version", "-version", "--version":
-		fmt.Fprintf(stdout, "httpfly %s\n", Version)
+		fmt.Fprintf(stdout, "httpfly %s\n", EffectiveVersion())
 		return nil
 	case "help", "-h", "--help":
 		printUsage(stdout)
