@@ -6,6 +6,43 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-12
+
+### Added
+
+- A block's `###` separator line can carry the request's name directly
+  (`### GetUsers`), equivalent to a bare `###` followed by
+  `# @name GetUsers`. An explicit `# @name` line in the same block is
+  still allowed as long as it agrees with the separator; a conflicting
+  value is a validation error instead of one silently overwriting the
+  other.
+- Optional `http-client.private.env.json`, alongside `http-client.env.json`,
+  for environment values you don't want committed (credentials, personal
+  tokens) or a fully local-only environment. Its values override the
+  public file's on a per-key basis, and it may define environments the
+  public file doesn't have at all. A missing private file is normal, not
+  an error.
+
+### Changed
+
+- **Breaking:** variable declarations — both in a file's prelude and local
+  to a request block — now require an `@` prefix: `@key = value` instead
+  of `key = value`, matching JetBrains HTTP Client / httpyac / kulala.
+  Update any existing `.http` files; the old bare syntax is no longer
+  recognized as a variable declaration.
+- **Breaking:** the environment file is now named `http-client.env.json`
+  (was `httpfly.env.json`), and its shape has changed: environment names
+  are top-level keys directly instead of nested under an `"environments"`
+  key, and the shared-defaults bucket is now `"$shared"` (was `"shared"`).
+  See [Environments](doc/environments.md) for the new format and the
+  private-overlay file above.
+- Because the `###` block separator now matches on prefix rather than
+  requiring an exact `"###"` line (needed for the separator-line-name
+  feature above), a line starting with `###` anywhere in a file —
+  including inside a request body — now starts a new block. This matches
+  JetBrains HTTP Client's own behavior; there's no way to escape a literal
+  `###` inside a body.
+
 ## [0.2.0] - 2026-08-24
 
 ### Added
