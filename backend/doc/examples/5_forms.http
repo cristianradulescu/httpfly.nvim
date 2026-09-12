@@ -1,0 +1,35 @@
+# Form submissions: regular (application/x-www-form-urlencoded) and
+# multipart (multipart/form-data with text fields), no scripting involved.
+#
+# httpfly's body is whatever text follows the blank line after headers,
+# sent byte-for-byte -- there's no "< ./path" file-inclusion syntax to pull
+# another file's content into a multipart part, so a real file upload isn't
+# expressible directly in a .http file here; build the multipart body from
+# a pre-request Lua script (ioutil.read_file(...), see 7_save_response.http
+# for the ioutil module) if you need one.
+#
+# Run `make httpbin-up` first.
+
+###
+# @name UrlEncoded
+POST http://localhost:8080/post HTTP/1.1
+Content-Type: application/x-www-form-urlencoded
+
+username=alice&password=s3cret&remember=true
+
+###
+# @name Multipart
+# The boundary in Content-Type must match the "--<boundary>" markers in
+# the body exactly (including the trailing "--" on the very last one).
+POST http://localhost:8080/post HTTP/1.1
+Content-Type: multipart/form-data; boundary=WebAppBoundary
+
+--WebAppBoundary
+Content-Disposition: form-data; name="username"
+
+alice
+--WebAppBoundary
+Content-Disposition: form-data; name="bio"
+
+Hello from httpfly
+--WebAppBoundary--

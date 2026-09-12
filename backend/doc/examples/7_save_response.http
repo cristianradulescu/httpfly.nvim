@@ -1,0 +1,34 @@
+# Saving a response body to disk yourself, via a post-request script and
+# the preloaded "ioutil" module (same mechanism 6_shell_auth.http uses for
+# "cmd"). See doc/scripting.md's "File reads and running commands" section.
+#
+# response.body is always the raw response text in httpfly, regardless of
+# Content-Type -- it's never pre-parsed into an object for you. That makes
+# saving a JSON/text response as simple as writing response.body straight
+# to disk; no re-serialization needed. This works for binary content too,
+# not just text -- Lua strings are byte arrays, not decoded Unicode text,
+# so response.body round-trips through ioutil.write_file byte-for-byte.
+# "run -download F" (see 4_download.http) is still the more convenient way
+# to save a response as-is: no script needed. Reach for a script instead
+# when you need to save something *derived* from the response (a
+# re-serialized subset, a different filename per response value, ...)
+# rather than the body verbatim.
+#
+# Run `make httpbin-up` first.
+
+###
+# @name SaveJsonResponse
+GET http://localhost:8080/get?report=example HTTP/1.1
+
+> {%
+  local ioutil = require("ioutil")
+  ioutil.write_file("/tmp/httpfly-saved-response.json", response.body)
+%}
+
+###
+# @name SaveTextResponse
+GET http://localhost:8080/robots.txt HTTP/1.1
+
+> {%
+  require("ioutil").write_file("/tmp/httpfly-saved-response.txt", response.body)
+%}

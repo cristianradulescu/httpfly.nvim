@@ -1,4 +1,4 @@
-# {{variable}} interpolation, resolved from the "key = value" declarations
+# {{variable}} interpolation, resolved from the "@key = value" declarations
 # below -- these are global: declared once in the prelude (before the first
 # "###"), inherited by every request in this file, in the URL, headers, or
 # body. A request can also declare its own local variable of the same name
@@ -8,11 +8,11 @@
 # 3_scripting.http for pre-request/post-request scripting.
 #
 # `host` here is also a good candidate for an environment override -- try
-# `httpfly run -env dev-alt-port 2_variables.http` against httpfly.env.json
+# `httpfly run -env dev-alt-port 2_variables.http` against http-client.env.json
 # in this directory (it points at a port nothing's listening on, so you'll
 # see a connection error instead of a response, which is the point: the
 # environment's value won the override over this file's own default).
-# httpfly.env.json also declares a "shared" greeting, inherited by both
+# http-client.env.json also declares a "$shared" greeting, inherited by both
 # "dev" and "dev-alt-port" since neither environment overrides it itself.
 
 @host = http://localhost:8080

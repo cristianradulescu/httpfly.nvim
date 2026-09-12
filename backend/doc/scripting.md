@@ -59,6 +59,11 @@ local data = json.decode(response.body)
 local encoded = json.encode({name = "Ada"})
 ```
 
+See [`doc/examples/6_shell_auth.http`](examples/6_shell_auth.http) for
+`cmd.exec` (shelling out to a script for a token) and
+[`doc/examples/7_save_response.http`](examples/7_save_response.http) for
+`ioutil.write_file` (saving a response body yourself).
+
 Scripts run with full trust — the same access to the filesystem and to run
 commands that the `httpfly` process itself has, no sandbox. You're running
 your own `.http` files; treat a script in one the same way you'd treat a

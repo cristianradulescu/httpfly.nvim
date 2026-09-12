@@ -17,7 +17,9 @@
 # Either way, AuthenticatedRequest's {{auth_token}} is whatever Login's
 # post-request script most recently set (persisted in .httpfly/state.json).
 # See doc/scripting.md. See 4_download.http for saving a binary response
-# to a file.
+# to a file, 6_shell_auth.http for shelling out to an external command in
+# a pre-request script instead of an HTTP call, and 7_save_response.http
+# for saving a response body yourself from a post-request script.
 
 ###
 # @name Login

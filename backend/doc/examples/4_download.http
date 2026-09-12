@@ -1,7 +1,8 @@
 # Downloading a binary response body instead of printing it -- printing
 # raw image bytes to your terminal would just be garbage, so the "run"
 # command's "-download" flag saves them to a file instead. See
-# doc/usage.md's "-download" section.
+# doc/usage.md's "-download" section. See 7_save_response.http for saving
+# a response body yourself from a post-request script instead.
 #
 # Run `make httpbin-up` first, then:
 #
