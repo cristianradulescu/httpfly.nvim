@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `:HttpSend`/`:HttpSendAll` now check that the configured `cmd` (default
+  `httpfly`) is actually executable before shelling out to it, and show a
+  `vim.notify` error pointing at httpfly's install docs (or `setup({ cmd =
+  ... })`) instead of silently failing with a raw "command not found" in the
+  result buffer.
+
 ### Removed
 
 - `doc/examples/` (the runnable `.http` example files and their

@@ -217,6 +217,24 @@ local function build_cmd(file, name_filter, download_path)
   return cmd
 end
 
+-- checked on every send rather than once at startup, so a `cmd` changed via
+-- a live setup() call, or a binary installed mid-session, is picked up
+-- immediately; vim.fn.executable() resolves both bare names (via $PATH) and
+-- absolute/relative paths, matching how vim.system() itself would look it up
+local function ensure_binary()
+  if vim.fn.executable(config.options.cmd) == 0 then
+    vim.notify(
+      "httpfly: '"
+        .. config.options.cmd
+        .. "' not found. Install it (see https://github.com/cristianradulescu/httpfly) "
+        .. "or set `cmd` in httpfly.setup({ cmd = ... }) to its full path.",
+      vim.log.levels.ERROR
+    )
+    return false
+  end
+  return true
+end
+
 local function require_file()
   local file = vim.api.nvim_buf_get_name(0)
   if file == "" then
@@ -336,6 +354,9 @@ local function resolve_download_path(block, cwd)
 end
 
 function M.send_current()
+  if not ensure_binary() then
+    return
+  end
   local file = require_file()
   if not file then
     return
@@ -352,6 +373,9 @@ function M.send_current()
 end
 
 function M.send_all()
+  if not ensure_binary() then
+    return
+  end
   local file = require_file()
   if not file then
     return
