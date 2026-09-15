@@ -14,6 +14,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `vim.notify` error pointing at httpfly's install docs (or `setup({ cmd =
   ... })`) instead of silently failing with a raw "command not found" in the
   result buffer.
+- A request's `@name` can now be resolved from trailing text on its own
+  `###` separator line (`### GetUsers`), matching httpfly v0.3.0's new
+  shorthand for `# @name GetUsers` — `:HttpSend` on such a block no longer
+  reports "no request (@name) found under cursor". An explicit `# @name`
+  line later in the same block still takes precedence.
+- New `private_env_file` option (default `http-client.private.env.json`),
+  matching httpfly v0.3.0's optional environment-file overlay for values
+  you don't want committed (credentials, personal tokens, a local-only
+  environment). `:HttpEnv`'s picker lists environments defined in either
+  file, and `:HttpEnvVars` shows the full precedence chain (public
+  `$shared` < public `<env>` < private `$shared` < private `<env>` <
+  persisted session state).
+
+### Changed
+
+- **Breaking:** `env_file` now defaults to `http-client.env.json` (was
+  `httpfly.env.json`), matching httpfly v0.3.0's env-file rename. The
+  file's shape also changed to match, and this plugin's own parsing now
+  assumes the new shape unconditionally (regardless of `env_file`'s
+  value): environment names are top-level keys directly instead of
+  nested under an `"environments"` key, and the shared-defaults bucket is
+  now `"$shared"` (was `"shared"`). Rename and reshape any existing env
+  file to match; this plugin now requires httpfly v0.3.0+.
 
 ### Removed
 

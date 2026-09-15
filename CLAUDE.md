@@ -7,8 +7,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 `httpfly.nvim` is a Neovim plugin that provides a thin UI layer over the
 [httpfly](https://github.com/cristianradulescu/httpfly) CLI for executing
 JetBrains-style `.http` files (`###` request separators, `{{variables}}`,
-`< {% ... %}`/`> {% ... %}` Lua pre/post-request scripts, `httpfly.env.json`
-environments). httpfly does all the heavy lifting — sending requests,
+`< {% ... %}`/`> {% ... %}` Lua pre/post-request scripts,
+`http-client.env.json` environments). httpfly does all the heavy lifting — sending requests,
 variable substitution, script execution, environment merging, persisting
 `client.global` variables across separate invocations. This plugin's job
 is: discover/select the environment, shell out to `httpfly run -json`, and
@@ -31,22 +31,27 @@ github.com/cristianradulescu/httpfly/cmd/httpfly@latest`, or build it from
 source — see httpfly's own `doc/installation.md`). The binary name is
 configurable via `require("httpfly").setup({ cmd = ... })`.
 
-httpfly resolves both `httpfly.env.json` and `.httpfly/state.json` relative
-to its own process's **current working directory only** — httpfly itself
-does no upward directory search the way some other HTTP-file tools do. This
-plugin compensates by doing the upward search itself: `env.lua`'s
+httpfly resolves `http-client.env.json` (plus an optional sibling
+`http-client.private.env.json` overlay, for values that shouldn't be
+committed), and `.httpfly/state.json`, relative to its own process's
+**current working directory only** — httpfly itself does no upward
+directory search the way some other HTTP-file tools do. This plugin
+compensates by doing the upward search itself: `env.lua`'s
 `find_env_dir()` walks up from the `.http` file's own directory looking for
-`httpfly.env.json` (via `vim.fs.find(..., { upward = true })`), and
+`http-client.env.json` (via `vim.fs.find(..., { upward = true })`), and
 `env.resolve_cwd()` returns that directory — falling back to the `.http`
 file's own directory if no env file is found anywhere upward — as the `cwd`
-this plugin always launches httpfly with. This lets one `httpfly.env.json`
-at a project's root serve `.http` files nested arbitrarily far below it
-(e.g. `v1/request.http`, `v2/request.http`); a subtree that needs a
-genuinely different environment file still just keeps its own copy closer
-to those `.http` files, which shadows the root one for anything under it.
-Because `.httpfly/state.json` is also resolved relative to that same `cwd`,
-persisted `client.global` state is shared by every `.http` file under the
-env file's directory, not scoped per subdirectory.
+this plugin always launches httpfly with. This lets one
+`http-client.env.json` at a project's root serve `.http` files nested
+arbitrarily far below it (e.g. `v1/request.http`, `v2/request.http`); a
+subtree that needs a genuinely different environment file still just keeps
+its own copy closer to those `.http` files, which shadows the root one for
+anything under it. Because `.httpfly/state.json` is also resolved relative
+to that same `cwd`, persisted `client.global` state is shared by every
+`.http` file under the env file's directory, not scoped per subdirectory.
+The private overlay, if present, is always expected alongside the public
+file in that same resolved directory — this plugin never searches for it
+independently.
 
 ## Architecture
 
@@ -55,43 +60,48 @@ Request flow, end to end:
 1. `plugin/httpfly.lua` registers `:HttpEnv`, `:HttpEnvVars`, `:HttpSend`,
    `:HttpSendAll`, `:HttpSessionClear` on load (guarded by
    `vim.g.loaded_httpfly`).
-2. `lua/httpfly/env.lua` resolves which httpfly environment (a key under
-   `httpfly.env.json`'s `"environments"` object) applies to the current
-   buffer. Because httpfly itself does no upward search (see above),
+2. `lua/httpfly/env.lua` resolves which httpfly environment (a top-level
+   key of `http-client.env.json`, or of its optional
+   `http-client.private.env.json` overlay) applies to the current buffer.
+   Because httpfly itself does no upward search (see above),
    `env_file_for_buf()` does one itself — `vim.fs.find(config.options.env_file,
    { path = dir, upward = true })` from the buffer's own directory up to the
    filesystem root — and keeps the selected environment name in a
    module-local table **keyed by that env file's path**, not globally, so
-   switching directories/projects doesn't bleed state. `:HttpEnv` with no
-   argument opens a `vim.ui.select`
-   picker over `read_env_names()`'s result (the `environments` object's
-   keys — `"shared"` isn't itself selectable, same as httpfly's own CLI
-   rejecting `-env shared`). `:HttpEnv <name>` sets it directly, without
-   going through the picker/`read_env_names()` at all (and without
-   validating the name exists anywhere).
+   switching directories/projects doesn't bleed state.
+   `private_env_file_for_buf()` reuses the same resolved directory for
+   `config.options.private_env_file`, without searching independently —
+   the private file, when present, always sits alongside the public one.
+   `:HttpEnv` with no argument opens a `vim.ui.select` picker over
+   `read_env_names()`'s result — every top-level key across *both* files,
+   unioned so an environment defined only in the private file (e.g. a
+   personal `local`) is selectable too, except `"$shared"`, which isn't
+   itself selectable, same as httpfly's own CLI rejecting `-env $shared`.
+   `:HttpEnv <name>` sets it directly, without going through the
+   picker/`read_env_names()` at all (and without validating the name
+   exists anywhere).
    - `env.status(bufnr)` returns the winbar text; `ftplugin/http.lua` wires
      it up as a **live** winbar expression
      (`%{%v:lua.require('httpfly.env').status()%}`), not a value set once
      at buffer-load time, so it stays correct after `:HttpEnv` changes the
      selection without needing to manually redraw anything.
    - `env.vars(bufnr)` / `env.show_vars(bufnr)` (bound to `:HttpEnvVars`)
-     replicate httpfly's own merge order so the values shown match what a
-     real send actually uses: `httpfly.env.json`'s `"shared"` → the
-     selected environment's own entries → persisted `.httpfly/state.json`
-     (`session.load()`, see below), each layer overwriting the last.
-     Unlike an earlier httpyac-backed version of this plugin, there's no
-     separate private-env-file split and no CLI quirk where `-env` doesn't
-     auto-merge a shared section — httpfly's own `internal/env.Load`
-     already merges `"shared"` into whichever environment is selected, so
-     `runner.lua`'s `build_cmd()` just passes `-env <name>` once, nothing
-     more.
+     replicate httpfly's own merge order (`internal/env.Load`) so the
+     values shown match what a real send actually uses, lowest to highest:
+     public `"$shared"` → public `<env>` → private `"$shared"` → private
+     `<env>` → persisted `.httpfly/state.json` (`session.load()`, see
+     below), each layer overwriting the last. `runner.lua`'s `build_cmd()`
+     just passes `-env <name>` once and lets httpfly itself do this same
+     merge server-side for the actual send — `env.vars()` only needs to
+     reproduce it locally so `:HttpEnvVars` can preview it without
+     sending anything.
 3. `lua/httpfly/runner.lua` builds the httpfly command
    (`httpfly run -json [-env E] [-name X] <file>`) and runs it with
    `vim.system`, with `cwd` set to `env.resolve_cwd()` — the directory this
-   plugin's own upward search (see above) found `httpfly.env.json` in, or
-   the `.http` file's own directory if none was found — since that's the
+   plugin's own upward search (see above) found `http-client.env.json` in,
+   or the `.http` file's own directory if none was found — since that's the
    only directory httpfly itself will look in for
-   `httpfly.env.json`/`.httpfly/state.json`. Unlike the previous
+   `http-client.env.json`/`.httpfly/state.json`. Unlike the previous
    httpyac-backed version, no extra environment variables need to be
    injected into the child process at all: httpfly persists
    `client.global` state natively (see below), so there's no bundled
@@ -100,19 +110,31 @@ Request flow, end to end:
    `cwd` option is sufficient.
    - **`-name` instead of `--line N`**: httpfly has no line-based "send
      the request under the cursor" flag — `-name X` (matching the request's
-     mandatory `# @name X`) is the only way to restrict a run to one
-     request. `M.send_current()` therefore has to find the enclosing
-     request's name itself: `find_enclosing_block()`/`parse_blocks()`
-     mirror httpfly's own parser, which splits the file on lines that are
-     exactly `###` (the segment before the first `###` is the prelude and
-     never carries a `@name`, since `@name` is request-only and mandatory
-     on every real request). `parse_blocks()` walks every block once,
-     extracting each one's `# @name X`, its request line's URL (for a
-     download filename guess — see below), and an `# @download` annotation
-     if present; `find_enclosing_block()` picks out whichever block
-     contains the cursor line. `vim.notify`s a warning rather than sending
-     anything if no name is found (cursor sitting in the prelude, or an
-     `.http` file that hasn't declared a name yet).
+     mandatory `@name`) is the only way to restrict a run to one request.
+     `M.send_current()` therefore has to find the enclosing request's name
+     itself: `find_enclosing_block()`/`parse_blocks()` mirror httpfly's own
+     parser, which splits the file on lines starting with `###` — no
+     leading whitespace, matching httpfly's `strings.HasPrefix` (the
+     segment before the first one is the prelude and never carries a
+     `@name`, since `@name` is request-only and mandatory on every real
+     request). Since httpfly v0.3.0, a block's `@name` can come from
+     trailing text on its own `###` separator line (`### GetUsers`,
+     equivalent to a bare `###` followed by `# @name GetUsers`) as well as
+     from an explicit `# @name X` line later in the block — `parse_blocks()`
+     checks the separator line first and lets an explicit `# @name` later
+     in the same block override it (httpfly itself requires the two to
+     agree when both are present; this plugin doesn't validate that, it
+     just needs *a* name to pass to `-name`). `parse_blocks()` walks every
+     block once, extracting its resolved name, its request line's URL (for
+     a download filename guess — see below), and an `# @download`
+     annotation if present; `find_enclosing_block()` picks out whichever
+     block contains the cursor line — note this excludes the block's own
+     `###` separator line, so a cursor sitting exactly on `### GetUsers`
+     itself (rather than inside the block) still won't resolve, same as
+     before this block could carry a name at all. `vim.notify`s a warning
+     rather than sending anything if no name is found (cursor sitting in
+     the prelude, on a separator line itself, or in an `.http` file that
+     hasn't declared a name yet).
    - **`# @download`**: httpfly's own equivalent is a plain `-download F`
      flag on `run` (added after this plugin's initial httpyac→httpfly
      switch), not a per-request annotation — it only ever applies to a

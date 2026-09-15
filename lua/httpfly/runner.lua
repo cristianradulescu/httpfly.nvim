@@ -250,40 +250,46 @@ local function require_file()
 end
 
 -- parses every request block in the buffer, mirroring httpfly's own
--- parser: the file is split on lines that are exactly "###" (the segment
--- before the first one is the prelude and never carries a @name). For
--- each block, pulls out its "# @name X" (mandatory on every real request),
--- its request line's URL (for a download filename guess), and an
--- "# @download" / "# @download some-name.ext" annotation if present --
--- this plugin's own way of marking a request's response for saving, since
--- httpfly itself has no per-request annotation for that (its "-download"
--- is a plain "run" flag, not something a request declares -- see
--- resolve_download_path() below). Blocks are returned in file order.
+-- parser: the file is split on lines starting with "###" -- literally, no
+-- leading whitespace allowed, matching httpfly's strings.HasPrefix -- with
+-- the segment before the first one being the prelude, which never carries
+-- a @name. Since httpfly v0.3.0, trailing text on that "###" line itself
+-- is shorthand for the block's @name ("### GetUsers" is equivalent to a
+-- bare "###" followed by "# @name GetUsers"), so that's checked first;
+-- an explicit "# @name" line later in the same block (still mandatory if
+-- the separator line carries no name) overrides it, matching httpfly's own
+-- rule that the two must agree when both are present. For each block, this
+-- also pulls out its request line's URL (for a download filename guess),
+-- and an "# @download" / "# @download some-name.ext" annotation if
+-- present -- this plugin's own way of marking a request's response for
+-- saving, since httpfly itself has no per-request annotation for that (its
+-- "-download" is a plain "run" flag, not something a request declares --
+-- see resolve_download_path() below). Blocks are returned in file order.
 local function parse_blocks(bufnr)
   local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
 
-  local boundaries = { 0 }
+  local boundaries = { { line = 0 } }
   for i, line in ipairs(lines) do
-    if line:match("^%s*###") then
-      table.insert(boundaries, i)
+    local trailing = line:match("^###(.*)$")
+    if trailing then
+      trailing = vim.trim(trailing)
+      table.insert(boundaries, { line = i, name = trailing ~= "" and trailing or nil })
     end
   end
-  table.insert(boundaries, #lines + 1)
+  table.insert(boundaries, { line = #lines + 1 })
 
   local blocks = {}
   for idx = 1, #boundaries - 1 do
-    local start_line = boundaries[idx] + 1
-    local end_line = boundaries[idx + 1] - 1
+    local start_line = boundaries[idx].line + 1
+    local end_line = boundaries[idx + 1].line - 1
 
-    local name, url, download
+    local name, url, download = boundaries[idx].name, nil, nil
     for i = start_line, end_line do
       local l = lines[i]
       if l then
-        if not name then
-          local n = l:match("^%s*#%s*@name%s+(.-)%s*$")
-          if n and n ~= "" then
-            name = n
-          end
+        local n = l:match("^%s*#%s*@name%s+(.-)%s*$")
+        if n and n ~= "" then
+          name = n
         end
         if not url then
           local u = l:match("^%u+%s+(%S+)%s+HTTP/[%d%.]+%s*$") or l:match("^%u+%s+(%S+)%s*$")

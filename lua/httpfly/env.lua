@@ -6,6 +6,11 @@ local M = {}
 -- env file path -> selected environment name, scoped per project
 local selected = {}
 
+-- applied as defaults to every environment in both the public and private
+-- files, dollar-prefixed so it can't collide with a real environment
+-- someone names "shared" (matches httpfly's internal/env.go)
+local SHARED_KEY = "$shared"
+
 local function read_json(path)
   local ok_read, content = pcall(vim.fn.readfile, path)
   if not ok_read then
@@ -22,17 +27,23 @@ local function dir_for_buf(bufnr)
   return vim.fn.fnamemodify(vim.api.nvim_buf_get_name(bufnr), ":h")
 end
 
--- httpfly resolves httpfly.env.json (and .httpfly/state.json) via its own
--- process cwd only, no upward search of its own -- so this plugin instead
--- does the upward search itself (from the .http file's own directory to
--- the filesystem root) to find where the env file actually lives, and then
--- always launches httpfly with that directory as cwd (M.resolve_cwd()
--- below). This lets a project keep one httpfly.env.json at its root while
--- .http files live in subdirectories (e.g. v1/request.http,
--- v2/request.http) -- without this, a real `httpfly run` from a subdir
--- wouldn't see the root env file at all. When no env file is found
--- anywhere upward, cwd falls back to the .http file's own directory,
--- matching the plugin's previous behavior.
+-- httpfly resolves http-client.env.json (and .httpfly/state.json) via its
+-- own process cwd only, no upward search of its own -- so this plugin
+-- instead does the upward search itself (from the .http file's own
+-- directory to the filesystem root) to find where the env file actually
+-- lives, and then always launches httpfly with that directory as cwd
+-- (M.resolve_cwd() below). This lets a project keep one
+-- http-client.env.json at its root while .http files live in
+-- subdirectories (e.g. v1/request.http, v2/request.http) -- without this,
+-- a real `httpfly run` from a subdir wouldn't see the root env file at
+-- all. When no env file is found anywhere upward, cwd falls back to the
+-- .http file's own directory, matching the plugin's previous behavior.
+-- Only the public file (config.options.env_file) is searched for here --
+-- the optional private overlay (config.options.private_env_file) is
+-- always looked for alongside whichever directory this search finds,
+-- never on its own (matching httpfly's own env.Load, which requires the
+-- public file to exist and treats the private one as an optional sibling
+-- in that same directory).
 local function find_env_dir(dir)
   local found = vim.fs.find(config.options.env_file, { path = dir, upward = true })[1]
   if not found then
@@ -41,40 +52,56 @@ local function find_env_dir(dir)
   return vim.fn.fnamemodify(found, ":h")
 end
 
--- environment names declared under the file's "environments" key; "shared"
--- isn't itself a selectable environment, same as httpfly's own CLI ("-env
--- shared" is an error there)
-local function read_env_names(env_file)
-  local decoded = read_json(env_file)
-  local environments = decoded.environments
-  if type(environments) ~= "table" then
-    return {}
-  end
+-- every top-level key across the public and private files, except
+-- "$shared", which isn't itself a selectable environment (same as
+-- httpfly's own CLI -- "-env $shared" is an error there). A name defined
+-- only in the private file (e.g. a personal "local" environment) is a
+-- valid choice too, same as httpfly's own resolution.
+local function read_env_names(public_decoded, private_decoded)
   local names = {}
-  for k in pairs(environments) do
-    table.insert(names, k)
+  local function collect(decoded)
+    if type(decoded) ~= "table" then
+      return
+    end
+    for k in pairs(decoded) do
+      if k ~= SHARED_KEY then
+        names[k] = true
+      end
+    end
   end
-  table.sort(names)
-  return names
+  collect(public_decoded)
+  collect(private_decoded)
+
+  local list = {}
+  for k in pairs(names) do
+    table.insert(list, k)
+  end
+  table.sort(list)
+  return list
 end
 
-local function merge_env(vars, decoded, name)
-  if type(decoded) ~= "table" then
-    return
-  end
-  local shared = decoded.shared
-  if type(shared) == "table" then
-    for k, v in pairs(shared) do
-      vars[k] = v
+-- layers variables into `vars` in httpfly's own precedence order, lowest
+-- to highest: public "$shared" < public <env> < private "$shared" <
+-- private <env> -- so a private-file value always wins over a
+-- public-file one, and each file's own environment entry still wins over
+-- that same file's "$shared" defaults (matches httpfly's internal/env.go
+-- Load()).
+local function merge_env(vars, public, private, name)
+  local function apply(decoded, key)
+    if type(decoded) ~= "table" then
+      return
+    end
+    local layer = decoded[key]
+    if type(layer) == "table" then
+      for k, v in pairs(layer) do
+        vars[k] = v
+      end
     end
   end
-  local environments = decoded.environments
-  local env = type(environments) == "table" and environments[name]
-  if type(env) == "table" then
-    for k, v in pairs(env) do
-      vars[k] = v
-    end
-  end
+  apply(public, SHARED_KEY)
+  apply(public, name)
+  apply(private, SHARED_KEY)
+  apply(private, name)
 end
 
 function M.env_file_for_buf(bufnr)
@@ -87,13 +114,27 @@ function M.env_file_for_buf(bufnr)
   return env_dir .. "/" .. config.options.env_file
 end
 
+-- the optional private overlay's path, alongside the public env file found
+-- by env_file_for_buf() -- nil under the same conditions env_file_for_buf()
+-- returns nil (no public env file found upward), since httpfly itself
+-- never looks for the private file without the public one existing first.
+function M.private_env_file_for_buf(bufnr)
+  bufnr = bufnr or 0
+  local dir = dir_for_buf(bufnr)
+  local env_dir = find_env_dir(dir)
+  if not env_dir then
+    return nil
+  end
+  return env_dir .. "/" .. config.options.private_env_file
+end
+
 -- the directory httpfly itself must be launched with as cwd for this
 -- buffer: the directory containing the env file found via the upward
 -- search above, or the .http file's own directory if none was found.
 -- runner.lua uses this same directory for -- and only for -- vim.system's
--- cwd, so httpfly.env.json and .httpfly/state.json (both cwd-relative on
--- httpfly's side) are read from/written to the same place this plugin
--- just looked in.
+-- cwd, so http-client.env.json (plus its optional private overlay) and
+-- .httpfly/state.json (all cwd-relative on httpfly's side) are read
+-- from/written to the same place this plugin just looked in.
 function M.resolve_cwd(bufnr)
   bufnr = bufnr or 0
   local dir = dir_for_buf(bufnr)
@@ -129,13 +170,14 @@ function M.status(bufnr)
   return "env: " .. (name or "(none, :HttpEnv)")
 end
 
--- merged variables ("shared" + selected environment, then
--- session-persisted vars overriding those) for the environment currently
--- selected for this buffer. `session_keys` is the set of keys present in
--- the persisted state; `env_keys` is the set of keys that already had a
--- value from the env file alone, before persisted state was applied -- the
--- two together let callers tell "session added a new var" apart from
--- "session overrode an existing env var"
+-- merged variables (public "$shared"/env, then private "$shared"/env, then
+-- session-persisted vars overriding those -- see merge_env() above for the
+-- exact precedence) for the environment currently selected for this
+-- buffer. `session_keys` is the set of keys present in the persisted
+-- state; `env_keys` is the set of keys that already had a value from the
+-- env files alone, before persisted state was applied -- the two together
+-- let callers tell "session added a new var" apart from "session overrode
+-- an existing env var"
 function M.vars(bufnr)
   bufnr = bufnr or 0
   local env_file = M.env_file_for_buf(bufnr)
@@ -148,7 +190,7 @@ function M.vars(bufnr)
   end
 
   local vars = {}
-  merge_env(vars, read_json(env_file), name)
+  merge_env(vars, read_json(env_file), read_json(M.private_env_file_for_buf(bufnr)), name)
 
   local env_keys = {}
   for k in pairs(vars) do
@@ -267,7 +309,7 @@ function M.pick(bufnr)
     return
   end
 
-  local names = read_env_names(env_file)
+  local names = read_env_names(read_json(env_file), read_json(M.private_env_file_for_buf(bufnr)))
   if #names == 0 then
     vim.notify("httpfly: no environments found in " .. env_file, vim.log.levels.WARN)
     return

@@ -2,7 +2,8 @@ local M = {}
 
 M.defaults = {
   cmd = "httpfly",
-  env_file = "httpfly.env.json",
+  env_file = "http-client.env.json",
+  private_env_file = "http-client.private.env.json",
   keymaps = true,
   max_header_value_len = 100,
   preview_keymap = "K",
