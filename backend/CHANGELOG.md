@@ -6,6 +6,46 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-09-15
+
+### Added
+
+- File uploads: a body line `< path/to/file` splices that file's raw
+  bytes into the request at send time — works as the whole body or
+  inside one part of a hand-written multipart body. A relative path
+  resolves against the current working directory, same as everything
+  else httpfly reads from disk, and the path itself can use `{{var}}`
+  interpolation. A file that can't be read is a validation warning
+  (a pre-request script might still create it before the request is
+  sent), escalated to a hard error by `run`/`convert to-curl` right
+  before it's actually needed. See
+  [File uploads](doc/http-file-format.md#file-uploads) and
+  `doc/examples/8_file_upload.http`.
+- `convert from-curl` understands curl's own file-upload flags:
+  `-d`/`--data-binary @path` becomes a `< path` body reference instead
+  of being dropped, and `-F`/`--form` builds a real
+  `multipart/form-data` body — a plain `name=value` field becomes text,
+  `name=@path[;filename=X][;type=Y]` becomes a file field. Mixing `-F`
+  with any `-d`/`--data*` is dropped with a warning, matching curl's own
+  restriction.
+- `convert to-curl` is the reverse: a `< path` body becomes
+  `--data-binary @path`, and a multipart body built from `< path`
+  references becomes one `-F` flag per part — the file is referenced by
+  path in the generated command rather than its contents inlined.
+- New walkthrough examples: `doc/examples/5_forms.http`
+  (url-encoded/multipart bodies), `6_shell_auth.http` (shelling out to
+  `generate-token.sh` from a pre-request script), `7_save_response.http`
+  (saving a response body via `ioutil.write_file`), and
+  `8_file_upload.http` (the new `< path` syntax, paired with the
+  `8_photo.png` fixture).
+
+### Fixed
+
+- `version`/`-version`/`--version` now reports the correct version when
+  httpfly is installed via `go install .../cmd/httpfly@vX.Y.Z` (falls
+  back to the module version Go's toolchain embeds automatically)
+  instead of always printing `dev` outside of a `make build`.
+
 ## [0.3.0] - 2026-09-12
 
 ### Added
