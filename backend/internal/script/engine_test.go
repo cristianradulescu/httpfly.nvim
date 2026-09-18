@@ -167,3 +167,19 @@ func TestPreScriptErrorIsPrefixedOnce(t *testing.T) {
 		t.Errorf("prefix appears %d times in %q, want exactly 1", got, err.Error())
 	}
 }
+
+func TestGlobalGetReturnsNilForUnsetVariable(t *testing.T) {
+	global := NewGlobalState(t.TempDir(), "", map[string]string{"empty": ""})
+	err := RunPreScript(`
+		assert(client.global:get("never_set") == nil, "unset must be nil")
+		assert(client.global:get("empty") == "", "an explicitly empty value must stay a string")
+		local v = client.global:get("never_set") or "fallback"
+		client.global:set("resolved", v)
+	`, global)
+	if err != nil {
+		t.Fatalf("RunPreScript: %v", err)
+	}
+	if got := global.Vars()["resolved"]; got != "fallback" {
+		t.Errorf("resolved = %q, want %q", got, "fallback")
+	}
+}

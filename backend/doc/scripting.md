@@ -37,7 +37,7 @@ request.
 
 | Global | Available in | Meaning |
 |---|---|---|
-| `client.global:get(name)` / `client.global:set(name, value)` | pre- and post-request | Persisted variables — see [Persistence](#persistence) below. |
+| `client.global:get(name)` / `client.global:set(name, value)` | pre- and post-request | Persisted variables — see [Persistence](#persistence) below. `get` returns `nil` for a variable that was never set (so `client.global:get("token") or "default"` works as expected); a value is always a string, `set` requires one. |
 | `response.status` | post-request only | The HTTP status code, e.g. `200`. |
 | `response.headers` | post-request only | A table of header name → array of values (a header can repeat, e.g. `Set-Cookie`). |
 | `response.body` | post-request only | The raw response body as a string. Parse it with `json.decode(response.body)` (see below) if it's JSON. |

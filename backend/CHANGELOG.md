@@ -32,6 +32,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- `client.global:get(name)` now returns `nil` for a variable that was
+  never set, instead of `""`, so a script can tell "unset" from "set to
+  empty" and use Lua's usual `get(...) or default` idiom. A script that
+  concatenated an unset value without checking will now raise a Lua
+  error rather than silently using an empty string.
 - A `< path` file reference is now read exactly once, by `run` right
   before sending; `validate` (and `run`'s parse pass) only check that the
   file can be opened. Previously every parse read the whole file, so

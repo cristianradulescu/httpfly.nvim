@@ -44,8 +44,12 @@ func (g *GlobalState) Vars() map[string]string {
 	return g.vars
 }
 
-func (g *GlobalState) get(name string) string {
-	return g.vars[name]
+// get returns the persisted value for name and whether one exists -- a
+// script sees nil for an unset variable (Lua's own convention for
+// "absent"), not "", so it can tell "never set" apart from "set to empty".
+func (g *GlobalState) get(name string) (string, bool) {
+	v, ok := g.vars[name]
+	return v, ok
 }
 
 func (g *GlobalState) set(name, value string) error {
@@ -112,12 +116,17 @@ func luaPrint(L *lua.LState) int {
 	return 0
 }
 
-// registerClient exposes "client.global:get(name)" / "client.global:set(name, value)".
+// registerClient exposes "client.global:get(name)" (nil if unset) /
+// "client.global:set(name, value)".
 func registerClient(L *lua.LState, global *GlobalState) {
 	globalTbl := L.NewTable()
 	globalTbl.RawSetString("get", L.NewFunction(func(L *lua.LState) int {
 		name := L.CheckString(2)
-		L.Push(lua.LString(global.get(name)))
+		if v, ok := global.get(name); ok {
+			L.Push(lua.LString(v))
+		} else {
+			L.Push(lua.LNil)
+		}
 		return 1
 	}))
 	globalTbl.RawSetString("set", L.NewFunction(func(L *lua.LState) int {
