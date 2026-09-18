@@ -96,7 +96,7 @@ Request flow, end to end:
      reproduce it locally so `:HttpEnvVars` can preview it without
      sending anything.
 3. `lua/httpfly/runner.lua` builds the httpfly command
-   (`httpfly run -json [-env E] [-name X] <file>`) and runs it with
+   (`httpfly run -json [-env E] [-timeout D] [-download F] [-name X] <file>`) and runs it with
    `vim.system`, with `cwd` set to `env.resolve_cwd()` — the directory this
    plugin's own upward search (see above) found `http-client.env.json` in,
    or the `.http` file's own directory if none was found — since that's the

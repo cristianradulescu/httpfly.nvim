@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- New `timeout` option (e.g. `timeout = "2m"`), passed through as
+  httpfly's `run -timeout`, for requests or downloads that need longer
+  than httpfly's 30s default. Requires an httpfly newer than v0.3.1.
 - httpfly's stderr is now shown in the result buffer as its own
   `stderr` section whenever it's non-empty, even on a successful run —
   since httpfly's post-v0.3.1 change a script's `print(...)` writes there (never to

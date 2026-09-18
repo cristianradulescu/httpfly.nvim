@@ -80,6 +80,7 @@ require("httpfly").setup({
   max_header_value_len = 100,                  -- header table cell truncation length
   preview_keymap = "K",                        -- keymap to preview a truncated value
   output_style = "markdown",                   -- "markdown" or "unicode"
+  timeout = nil,                               -- per-request timeout as a Go duration ("2m"); nil = httpfly's 30s default
 })
 ```
 

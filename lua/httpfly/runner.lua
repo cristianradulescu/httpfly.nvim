@@ -243,6 +243,9 @@ local function build_cmd(file, name_filter, download_path)
   if e then
     vim.list_extend(cmd, { "-env", e })
   end
+  if config.options.timeout then
+    vim.list_extend(cmd, { "-timeout", tostring(config.options.timeout) })
+  end
   if download_path then
     vim.list_extend(cmd, { "-download", download_path })
   end
