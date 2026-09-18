@@ -222,3 +222,22 @@ func TestResolveVariableCycleIsAnError(t *testing.T) {
 		t.Error("HasErrors() = false, want true")
 	}
 }
+
+func TestResolveDynamicVariableInURLAndUnsupportedOneWarns(t *testing.T) {
+	src := "###\n# @name Dyn\nGET http://localhost:8080/get?id={{$uuid}}&x={{$nope}} HTTP/1.1\nX-Request-Id: {{$uuid}}\n"
+	result, err := Analyze(strings.NewReader(src))
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	block := result.Blocks[0]
+	if strings.Contains(block.Request.URL, "{{$uuid}}") || !strings.Contains(block.Request.URL, "x={{$nope}}") {
+		t.Errorf("URL = %q, want $uuid substituted and $nope left literal", block.Request.URL)
+	}
+	if strings.Contains(block.Request.Headers[0].Value, "{{") {
+		t.Errorf("header = %q, want $uuid substituted", block.Request.Headers[0].Value)
+	}
+	issue := findIssue(block.Issues, "url")
+	if issue == nil || !IsUndefinedVariableIssue(*issue) || !strings.Contains(issue.Message, "$nope") {
+		t.Errorf("issue = %+v, want an undefined-variable warning for $nope", issue)
+	}
+}

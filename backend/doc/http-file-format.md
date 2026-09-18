@@ -157,6 +157,34 @@ An undefined variable inside a value is reported the same way as one in
 the request itself. A reference cycle (`@a = {{b}}` with `@b = {{a}}`) is
 an `ERROR`, since no later script could ever resolve it.
 
+### Dynamic variables
+
+A few `{{$name}}` variables are built in and generated fresh for every
+occurrence, at the moment the request is resolved (so `validate` shows
+one value and `run` sends another, and two `{{$uuid}}` in one request are
+two different UUIDs). The names match JetBrains HTTP Client's:
+
+| Variable | Value |
+|---|---|
+| `{{$uuid}}` | A random version-4 UUID, e.g. `3f2a9c1e-8b4d-4e6f-9a1b-2c3d4e5f6a7b` |
+| `{{$timestamp}}` | Current Unix time in seconds, e.g. `1758196800` |
+| `{{$isoTimestamp}}` | Current UTC time in RFC 3339 form, e.g. `2026-09-18T12:00:00Z` |
+| `{{$randomInt}}` | A random integer from 0 to 1000 |
+
+```http
+###
+# @name Create
+POST http://localhost:8080/post HTTP/1.1
+X-Request-Id: {{$uuid}}
+Content-Type: application/json
+
+{"created_at": "{{$isoTimestamp}}", "nonce": {{$randomInt}}}
+```
+
+Any other `{{$name}}` is reported as an undefined variable, the same as an
+unknown plain `{{name}}` — never sent as literal text. A declared
+`@key = value` can't start with `$`, so nothing can shadow a built-in.
+
 ### URL encoding
 
 A variable substituted into a query parameter's *value* is percent-encoded

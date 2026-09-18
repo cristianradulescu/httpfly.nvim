@@ -8,6 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Dynamic variables, matching JetBrains HTTP Client's names: `{{$uuid}}`,
+  `{{$timestamp}}`, `{{$isoTimestamp}}` and `{{$randomInt}}` are generated
+  fresh for every occurrence when a request is resolved. Any other
+  `{{$name}}` is reported as an undefined variable; previously a
+  `$`-prefixed placeholder was silently sent as literal text.
 - A variable's value can now reference other variables
   (`@host = {{scheme}}://localhost:8080`), expanded recursively against
   the full variable set regardless of which tier (prelude, environment,

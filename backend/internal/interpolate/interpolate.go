@@ -5,12 +5,57 @@
 package interpolate
 
 import (
+	"crypto/rand"
+	"fmt"
+	mrand "math/rand/v2"
 	"net/url"
 	"regexp"
+	"sort"
+	"strconv"
 	"strings"
+	"time"
 )
 
-var placeholderPattern = regexp.MustCompile(`\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}`)
+// placeholderPattern matches "{{name}}" -- a declared variable, or, with a
+// leading "$", one of the dynamicVars below. A "$"-name is matched here
+// specifically so an unsupported one ("{{$nope}}") is reported as
+// undefined rather than passed through to the wire as literal text.
+var placeholderPattern = regexp.MustCompile(`\{\{\s*(\$?[A-Za-z_][A-Za-z0-9_]*)\s*\}\}`)
+
+// dynamicVars are the built-in "{{$name}}" variables, generated fresh for
+// every occurrence at the moment of substitution (so two "{{$uuid}}" in
+// one request are two different UUIDs, and a request re-resolved right
+// before sending gets values from that moment, not from parse time). The
+// names match JetBrains HTTP Client's. A declared variable can't shadow
+// one: "@key = value" names can't start with "$".
+var dynamicVars = map[string]func() string{
+	"$uuid":         newUUID,
+	"$timestamp":    func() string { return strconv.FormatInt(time.Now().Unix(), 10) },
+	"$isoTimestamp": func() string { return time.Now().UTC().Format(time.RFC3339) },
+	"$randomInt":    func() string { return strconv.Itoa(mrand.IntN(1001)) }, // 0..1000, like JetBrains
+}
+
+// DynamicVariableNames lists the supported "{{$name}}" variables, sorted,
+// for documentation/diagnostics.
+func DynamicVariableNames() []string {
+	names := make([]string, 0, len(dynamicVars))
+	for name := range dynamicVars {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// newUUID returns a random (version 4) UUID in canonical text form.
+func newUUID() string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		panic("crypto/rand unavailable: " + err.Error())
+	}
+	b[6] = (b[6] & 0x0f) | 0x40 // version 4
+	b[8] = (b[8] & 0x3f) | 0x80 // RFC 4122 variant
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+}
 
 // Apply replaces every "{{name}}" placeholder in s with vars[name]. A
 // value may itself contain "{{other}}" placeholders, which are expanded
@@ -96,6 +141,12 @@ func applyEscaped(s string, vars map[string]string, escape func(string) string) 
 func (e *expander) expand(s string, stack []string, escape func(string) string) string {
 	return placeholderPattern.ReplaceAllStringFunc(s, func(match string) string {
 		name := placeholderPattern.FindStringSubmatch(match)[1]
+		if strings.HasPrefix(name, "$") {
+			if gen, ok := dynamicVars[name]; ok {
+				return escape(gen())
+			}
+			// fall through: an unsupported "$name" is simply undefined
+		}
 		v, ok := e.vars[name]
 		if !ok {
 			if !e.seenMiss[name] {

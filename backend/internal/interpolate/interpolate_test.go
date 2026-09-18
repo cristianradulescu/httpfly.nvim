@@ -2,7 +2,11 @@ package interpolate
 
 import (
 	"reflect"
+	"regexp"
+	"strconv"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestApplyResolvesKnownVariables(t *testing.T) {
@@ -148,5 +152,60 @@ func TestApplyURLEscapesNestedValueOnce(t *testing.T) {
 	got, _, _ := ApplyURL("http://localhost:8080/get?greeting={{greeting}}", vars)
 	if want := "http://localhost:8080/get?greeting=Hello+again"; got != want {
 		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestApplyDynamicVariables(t *testing.T) {
+	got, missing, _ := Apply("{{$uuid}}|{{$timestamp}}|{{$isoTimestamp}}|{{$randomInt}}", nil)
+	if len(missing) != 0 {
+		t.Fatalf("missing = %v, want none", missing)
+	}
+	parts := strings.Split(got, "|")
+	if len(parts) != 4 {
+		t.Fatalf("got %q, want 4 parts", got)
+	}
+	if !regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`).MatchString(parts[0]) {
+		t.Errorf("$uuid = %q, want a v4 UUID", parts[0])
+	}
+	if ts, err := strconv.ParseInt(parts[1], 10, 64); err != nil || time.Since(time.Unix(ts, 0)) > time.Minute {
+		t.Errorf("$timestamp = %q, want current unix seconds", parts[1])
+	}
+	if ts, err := time.Parse(time.RFC3339, parts[2]); err != nil || time.Since(ts) > time.Minute || !strings.HasSuffix(parts[2], "Z") {
+		t.Errorf("$isoTimestamp = %q, want current UTC RFC3339", parts[2])
+	}
+	if n, err := strconv.Atoi(parts[3]); err != nil || n < 0 || n > 1000 {
+		t.Errorf("$randomInt = %q, want 0..1000", parts[3])
+	}
+}
+
+func TestApplyDynamicVariableFreshPerOccurrence(t *testing.T) {
+	got, _, _ := Apply("{{$uuid}} {{$uuid}}", nil)
+	a, b, _ := strings.Cut(got, " ")
+	if a == b {
+		t.Errorf("both occurrences gave %q, want distinct values", a)
+	}
+}
+
+func TestApplyUnsupportedDynamicVariableIsReportedMissing(t *testing.T) {
+	got, missing, _ := Apply("id={{$nope}}", map[string]string{"nope": "declared"})
+	if want := "id={{$nope}}"; got != want {
+		t.Errorf("got %q, want %q (must not fall back to the plain variable)", got, want)
+	}
+	if want := []string{"$nope"}; !reflect.DeepEqual(missing, want) {
+		t.Errorf("missing = %v, want %v", missing, want)
+	}
+}
+
+func TestApplyURLEscapesDynamicQueryValue(t *testing.T) {
+	got, _, _ := ApplyURL("http://localhost:8080/get?at={{$isoTimestamp}}", nil)
+	if strings.Contains(got, ":") && strings.Contains(strings.SplitN(got, "?", 2)[1], ":") {
+		t.Errorf("got %q, want the timestamp's colons percent-encoded in the query value", got)
+	}
+}
+
+func TestDynamicVariableNames(t *testing.T) {
+	want := []string{"$isoTimestamp", "$randomInt", "$timestamp", "$uuid"}
+	if got := DynamicVariableNames(); !reflect.DeepEqual(got, want) {
+		t.Errorf("DynamicVariableNames() = %v, want %v", got, want)
 	}
 }
