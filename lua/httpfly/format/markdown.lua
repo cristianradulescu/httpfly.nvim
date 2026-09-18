@@ -38,7 +38,9 @@ local function body_block(body, headers)
   end
 
   local lang = shared.body_lang(headers)
-  local text = body
+  -- httpfly sends multipart bodies with CRLF line endings (and the -json
+  -- request.body reflects that); drop the \r so lines don't render as ^M
+  local text = body:gsub("\r\n", "\n")
   if lang == "json" then
     local ok, pretty = pcall(json.pretty, body)
     if ok and pretty and pretty ~= "" then

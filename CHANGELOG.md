@@ -28,6 +28,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   blocks; `:HttpSend` on such a file shows httpfly's own error in the
   result buffer rather than silently sending the first block.
 
+### Fixed
+
+- Request/response bodies with CRLF line endings no longer render with a
+  trailing `^M` on every line in the result buffer — relevant since
+  httpfly (newer than v0.3.1) sends `multipart/*` request bodies with CRLF and
+  reports them that way in `-json`'s `request.body`.
+
 ## [0.3.0] - 2026-10-15
 
 ### Added
