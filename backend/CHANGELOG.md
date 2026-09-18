@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `.golangci.yml`, so `make lint` (which already referenced it) actually
+  has a configuration to run with.
 - `run -timeout D` sets the per-request timeout (default `30s`, `0` to
   disable) as a Go duration like `2m`, covering the connection, the
   request, and reading the whole response body — previously the 30s was
