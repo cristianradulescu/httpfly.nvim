@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- A variable's value can now reference other variables
+  (`@host = {{scheme}}://localhost:8080`), expanded recursively against
+  the full variable set regardless of which tier (prelude, environment,
+  persisted state, local) each one comes from — matching JetBrains HTTP
+  Client. An undefined variable inside a value is reported like any other;
+  a reference cycle is a validation `ERROR`.
 - `#` comment lines are now allowed among a request's headers, so a header
   can be commented out and back in without moving it. A `# @key` metadata
   line in that position is an `ERROR` (metadata must precede the request

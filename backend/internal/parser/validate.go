@@ -406,18 +406,19 @@ func Resolve(req httpfile.Request, vars map[string]string) (httpfile.Request, []
 	var issues []Issue
 
 	if req.RawURL != "" {
-		resolvedURL, missing := interpolate.ApplyURL(req.RawURL, vars)
+		resolvedURL, missing, cycles := interpolate.ApplyURL(req.RawURL, vars)
 		req.URL = resolvedURL
 		for _, name := range missing {
 			issues = append(issues, undefinedVariableIssue("url", name))
 		}
+		issues = append(issues, cycleIssues("url", cycles)...)
 		if u, err := url.Parse(resolvedURL); err != nil {
 			issues = append(issues, Issue{
 				Element:  "url",
 				Severity: SeverityError,
 				Message:  fmt.Sprintf("invalid URL: %v", err),
 			})
-		} else if (u.Scheme == "" || u.Host == "") && len(missing) == 0 {
+		} else if (u.Scheme == "" || u.Host == "") && len(missing) == 0 && len(cycles) == 0 {
 			// A still-unresolved placeholder already explains why this
 			// doesn't look absolute; don't pile on a second issue for it.
 			issues = append(issues, Issue{
@@ -430,17 +431,19 @@ func Resolve(req httpfile.Request, vars map[string]string) (httpfile.Request, []
 
 	req.Headers = nil
 	for _, h := range req.RawHeaders {
-		value, missing := interpolate.Apply(h.Value, vars)
+		value, missing, cycles := interpolate.Apply(h.Value, vars)
 		for _, name := range missing {
 			issues = append(issues, undefinedVariableIssue("header:"+h.Name, name))
 		}
+		issues = append(issues, cycleIssues("header:"+h.Name, cycles)...)
 		req.Headers = append(req.Headers, httpfile.Header{Name: h.Name, Value: value})
 	}
 
-	body, missing := interpolate.Apply(req.RawBody, vars)
+	body, missing, cycles := interpolate.Apply(req.RawBody, vars)
 	for _, name := range missing {
 		issues = append(issues, undefinedVariableIssue("body", name))
 	}
+	issues = append(issues, cycleIssues("body", cycles)...)
 	body, fileIssues := spliceFileReferences(body)
 	issues = append(issues, fileIssues...)
 	req.Body = body
@@ -650,11 +653,12 @@ func resolveProxy(rawProxy string, vars map[string]string) (string, []Issue) {
 		return "", nil
 	}
 
-	resolved, missing := interpolate.Apply(rawProxy, vars)
+	resolved, missing, cycles := interpolate.Apply(rawProxy, vars)
 	var issues []Issue
 	for _, name := range missing {
 		issues = append(issues, undefinedVariableIssue("metadata:proxy", name))
 	}
+	issues = append(issues, cycleIssues("metadata:proxy", cycles)...)
 
 	if u, err := url.Parse(resolved); err != nil {
 		issues = append(issues, Issue{
@@ -662,7 +666,7 @@ func resolveProxy(rawProxy string, vars map[string]string) (string, []Issue) {
 			Severity: SeverityError,
 			Message:  fmt.Sprintf("invalid proxy URL: %v", err),
 		})
-	} else if (u.Scheme == "" || u.Host == "") && len(missing) == 0 {
+	} else if (u.Scheme == "" || u.Host == "") && len(missing) == 0 && len(cycles) == 0 {
 		issues = append(issues, Issue{
 			Element:  "metadata:proxy",
 			Severity: SeverityError,
@@ -688,4 +692,20 @@ func undefinedVariableIssue(element, name string) Issue {
 		Severity: SeverityWarning,
 		Message:  fmt.Sprintf("%s%q", undefinedVariablePrefix, name),
 	}
+}
+
+// cycleIssues turns the variable-reference cycles interpolate reported for
+// element into errors: unlike an undefined variable, a cycle can never be
+// fixed by a script setting something later, so it's an error even at
+// parse time.
+func cycleIssues(element string, cycles []string) []Issue {
+	var issues []Issue
+	for _, path := range cycles {
+		issues = append(issues, Issue{
+			Element:  element,
+			Severity: SeverityError,
+			Message:  fmt.Sprintf("variable reference cycle: %s", path),
+		})
+	}
+	return issues
 }

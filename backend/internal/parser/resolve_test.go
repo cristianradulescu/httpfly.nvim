@@ -189,3 +189,36 @@ func TestIsUndefinedVariableIssue(t *testing.T) {
 		t.Errorf("IsUndefinedVariableIssue(%+v) = true, want false", other)
 	}
 }
+
+func TestResolveExpandsVariablesReferencingVariables(t *testing.T) {
+	src := "@scheme = http\n@host = {{scheme}}://localhost:8080\n\n###\n# @name Nested\n@base = {{host}}/api\nGET {{base}}/users HTTP/1.1\nX-Origin: {{host}}\n"
+	result, err := Analyze(strings.NewReader(src))
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	block := result.Blocks[0]
+	if len(block.Issues) != 0 {
+		t.Fatalf("issues = %+v, want none", block.Issues)
+	}
+	if want := "http://localhost:8080/api/users"; block.Request.URL != want {
+		t.Errorf("URL = %q, want %q", block.Request.URL, want)
+	}
+	if want := "http://localhost:8080"; block.Request.Headers[0].Value != want {
+		t.Errorf("header = %q, want %q", block.Request.Headers[0].Value, want)
+	}
+}
+
+func TestResolveVariableCycleIsAnError(t *testing.T) {
+	src := "@a = {{b}}\n@b = {{a}}\n\n###\n# @name Cyclic\nGET http://localhost:8080/get?x={{a}} HTTP/1.1\n"
+	result, err := Analyze(strings.NewReader(src))
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	issue := findIssue(result.Blocks[0].Issues, "url")
+	if issue == nil || issue.Severity != SeverityError || !strings.Contains(issue.Message, "cycle: a -> b -> a") {
+		t.Fatalf("issue = %+v, want a cycle error", issue)
+	}
+	if !result.HasErrors() {
+		t.Error("HasErrors() = false, want true")
+	}
+}

@@ -137,6 +137,26 @@ An `{{unknown}}` placeholder with no matching declaration is left as
 literal text in the output and reported as a warning — it doesn't stop the
 request from being parsed or sent.
 
+### Variables referencing variables
+
+A variable's value can itself contain `{{placeholders}}`, expanded
+against the same set of variables (from any tier — a prelude variable can
+build on an environment one and vice versa):
+
+```http
+@scheme = http
+@host = {{scheme}}://localhost:8080
+@api = {{host}}/api
+
+###
+# @name Users
+GET {{api}}/users HTTP/1.1    # -> http://localhost:8080/api/users
+```
+
+An undefined variable inside a value is reported the same way as one in
+the request itself. A reference cycle (`@a = {{b}}` with `@b = {{a}}`) is
+an `ERROR`, since no later script could ever resolve it.
+
 ### URL encoding
 
 A variable substituted into a query parameter's *value* is percent-encoded
@@ -226,7 +246,7 @@ the report format). At a glance:
 
 | Severity | Examples |
 |---|---|
-| `ERROR` (blocks the request / fails validation) | Missing or empty `@name`; the same `@name` used by more than one request in the file; a separator-line name that conflicts with an explicit `# @name` in the same block; request line that isn't `METHOD URL [PROTO]`; relative URL; malformed header line (no `:`); `@proxy` that isn't absolute; `@name`/`@lang` declared in the prelude; `# @key` metadata placed among the headers instead of before the request line; a malformed or unterminated script block; a script with invalid Lua syntax. |
+| `ERROR` (blocks the request / fails validation) | Missing or empty `@name`; the same `@name` used by more than one request in the file; a separator-line name that conflicts with an explicit `# @name` in the same block; request line that isn't `METHOD URL [PROTO]`; relative URL; malformed header line (no `:`); `@proxy` that isn't absolute; `@name`/`@lang` declared in the prelude; `# @key` metadata placed among the headers instead of before the request line; a malformed or unterminated script block; a script with invalid Lua syntax; a variable reference cycle (`@a = {{b}}`, `@b = {{a}}`). |
 | `WARN` (still usable, just worth knowing) | Unknown `@key`; non-standard HTTP method; unrecognized `PROTO` string; `@lang` set to something other than `lua`; undefined `{{variable}}`; a `< path/to/file` body reference that couldn't be read. |
 
 `doc/examples/invalid.http` in this repo demonstrates each of these, one

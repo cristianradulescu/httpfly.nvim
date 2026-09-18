@@ -115,7 +115,9 @@ highest to lowest:
 
 In other words: the file's own globals are the baseline default, an
 environment can override them, and any one request can still override
-that for itself. See [.http File Format](http-file-format.md#variables)
+that for itself. An environment value can also reference other variables
+(`"api": "{{host}}/api"`), from any tier — see
+[Variables referencing variables](http-file-format.md#variables-referencing-variables). See [.http File Format](http-file-format.md#variables)
 for how global vs. local variables work within the file itself.
 
 ## Example
