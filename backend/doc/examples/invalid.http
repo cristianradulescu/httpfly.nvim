@@ -68,3 +68,13 @@ GET http://localhost:8080/get HTTP/1.1
 ### DuplicatedName1
 # @name DuplicatedName2
 GET http://localhost:8080/get HTTP/1.1
+
+###
+# @name SameNameTwice
+# First of two blocks sharing a @name -- this one is fine on its own.
+GET http://localhost:8080/get HTTP/1.1
+
+###
+# @name SameNameTwice
+# Reuses the @name above, so "-name SameNameTwice" would be ambiguous. [ERROR]
+GET http://localhost:8080/get HTTP/1.1

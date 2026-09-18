@@ -489,3 +489,24 @@ func TestAnalyzeNilEnvVarsMatchesAnalyze(t *testing.T) {
 		t.Errorf("AnalyzeWithEnv(nil) = %+v, want %+v", withEnv, without)
 	}
 }
+
+func TestAnalyzeDuplicateNameAcrossBlocksErrors(t *testing.T) {
+	src := "###\n# @name Dup\nGET http://localhost:8080/first HTTP/1.1\n\n###\n# @name Dup\nGET http://localhost:8080/second HTTP/1.1\n"
+	result, err := Analyze(strings.NewReader(src))
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	if len(result.Blocks) != 2 {
+		t.Fatalf("got %d blocks, want 2", len(result.Blocks))
+	}
+	if issue := findIssue(result.Blocks[0].Issues, "metadata:name"); issue != nil {
+		t.Errorf("first block unexpectedly has a name issue: %+v", *issue)
+	}
+	issue := findIssue(result.Blocks[1].Issues, "metadata:name")
+	if issue == nil || issue.Severity != SeverityError || !strings.Contains(issue.Message, "duplicate @name") {
+		t.Fatalf("second block issue = %+v, want a duplicate @name error", issue)
+	}
+	if _, err := Parse(strings.NewReader(src)); err == nil {
+		t.Errorf("Parse succeeded, want an error for the duplicate @name")
+	}
+}

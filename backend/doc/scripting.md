@@ -71,6 +71,12 @@ shell script you wrote yourself. See each module's own documentation for
 its full API (`cmd.exec`, `ioutil.read_file`/`write_file`/`copy`,
 `filepath.*`, `json.decode`/`encode`).
 
+## Debug output
+
+`print(...)` works as usual but writes to **stderr**, not stdout — so a
+`httpfly run -json` invocation's stdout stays a single clean JSON document
+even if a script prints while debugging.
+
 ## Persistence
 
 `client.global:set(...)` writes through to `.httpfly/state.json`,

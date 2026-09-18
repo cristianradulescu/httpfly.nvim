@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -71,7 +72,7 @@ func TestRunCreatesStateInCurrentWorkingDirectoryNotHTTPFilesDirectory(t *testin
 	chdir(t, parent)
 
 	var stdout bytes.Buffer
-	if err := runCommand([]string{filepath.Join("v1", "login.http")}, &stdout); err != nil {
+	if err := runCommand([]string{filepath.Join("v1", "login.http")}, &stdout, io.Discard); err != nil {
 		t.Fatalf("runCommand: %v", err)
 	}
 

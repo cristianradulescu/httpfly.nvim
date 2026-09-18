@@ -12,9 +12,9 @@ import (
 	"github.com/cristianradulescu/httpfly/internal/state"
 )
 
-func validateCommand(args []string, stdout io.Writer) error {
+func validateCommand(args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("validate", flag.ContinueOnError)
-	fs.SetOutput(stdout)
+	fs.SetOutput(stderr)
 	name := fs.String("name", "", "only report on the request with this @name")
 	envName := fs.String("env", "", "apply variables from the named environment in http-client.env.json")
 	if err := fs.Parse(args); err != nil {

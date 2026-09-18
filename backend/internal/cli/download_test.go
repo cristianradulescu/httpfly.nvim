@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -21,7 +22,7 @@ func TestRunDownloadSavesBodyToFile(t *testing.T) {
 	path := writeHTTPFile(t, "###\n# @name Get\nGET "+srv.URL+" HTTP/1.1\n")
 
 	var stdout bytes.Buffer
-	if err := runCommand([]string{"-download", out, path}, &stdout); err != nil {
+	if err := runCommand([]string{"-download", out, path}, &stdout, io.Discard); err != nil {
 		t.Fatalf("runCommand: %v", err)
 	}
 
@@ -54,7 +55,7 @@ func TestRunDownloadJSONModeEmptiesBodyAndAddsDownloadPath(t *testing.T) {
 	path := writeHTTPFile(t, "###\n# @name Get\nGET "+srv.URL+" HTTP/1.1\n")
 
 	var stdout bytes.Buffer
-	if err := runCommand([]string{"-download", out, "-json", path}, &stdout); err != nil {
+	if err := runCommand([]string{"-download", out, "-json", path}, &stdout, io.Discard); err != nil {
 		t.Fatalf("runCommand: %v", err)
 	}
 
@@ -72,7 +73,7 @@ func TestRunDownloadRequiresSingleRequest(t *testing.T) {
 	dir := t.TempDir()
 
 	var stdout bytes.Buffer
-	err := runCommand([]string{"-download", filepath.Join(dir, "out.bin"), path}, &stdout)
+	err := runCommand([]string{"-download", filepath.Join(dir, "out.bin"), path}, &stdout, io.Discard)
 	if err == nil {
 		t.Fatal("expected an error when -download is used with more than one selected request")
 	}
@@ -83,7 +84,7 @@ func TestRunDownloadAndSilentAreMutuallyExclusive(t *testing.T) {
 	dir := t.TempDir()
 
 	var stdout bytes.Buffer
-	err := runCommand([]string{"-download", filepath.Join(dir, "out.bin"), "-s", path}, &stdout)
+	err := runCommand([]string{"-download", filepath.Join(dir, "out.bin"), "-s", path}, &stdout, io.Discard)
 	if err == nil {
 		t.Fatal("expected an error when -download and -silent are combined")
 	}
@@ -99,7 +100,7 @@ func TestRunDownloadFailsClearlyWhenParentDirMissing(t *testing.T) {
 	missingDir := filepath.Join(t.TempDir(), "does-not-exist", "out.bin")
 
 	var stdout bytes.Buffer
-	err := runCommand([]string{"-download", missingDir, path}, &stdout)
+	err := runCommand([]string{"-download", missingDir, path}, &stdout, io.Discard)
 	if err == nil {
 		t.Fatal("expected an error when the download path's parent directory doesn't exist")
 	}
@@ -119,7 +120,7 @@ func TestRunDownloadOverwritesExistingFile(t *testing.T) {
 	path := writeHTTPFile(t, "###\n# @name Get\nGET "+srv.URL+" HTTP/1.1\n")
 
 	var stdout bytes.Buffer
-	if err := runCommand([]string{"-download", out, path}, &stdout); err != nil {
+	if err := runCommand([]string{"-download", out, path}, &stdout, io.Discard); err != nil {
 		t.Fatalf("runCommand: %v", err)
 	}
 
@@ -138,7 +139,7 @@ func TestRunDownloadNotWrittenOnTransportFailure(t *testing.T) {
 	path := writeHTTPFile(t, "###\n# @name Fails\nGET http://127.0.0.1:1/get HTTP/1.1\n")
 
 	var stdout bytes.Buffer
-	err := runCommand([]string{"-download", out, path}, &stdout)
+	err := runCommand([]string{"-download", out, path}, &stdout, io.Discard)
 	if err == nil {
 		t.Fatal("expected an error since the request itself failed to send")
 	}

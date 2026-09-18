@@ -28,9 +28,9 @@ type requestOutcome struct {
 	DownloadPath string // non-empty if -download saved the body to this path instead of printing it
 }
 
-func runCommand(args []string, stdout io.Writer) error {
+func runCommand(args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
-	fs.SetOutput(stdout)
+	fs.SetOutput(stderr)
 	name := fs.String("name", "", "only send the request with this @name")
 	var silent bool
 	fs.BoolVar(&silent, "silent", false, "print only response bodies, nothing else (like curl -s)")
@@ -117,7 +117,7 @@ func runCommand(args []string, stdout io.Writer) error {
 		default:
 			printResult(stdout, outcome.Result, verbose, outcome.DownloadPath)
 			if outcome.ScriptErr != nil {
-				fmt.Fprintf(stdout, "post-request script error: %v\n\n", outcome.ScriptErr)
+				fmt.Fprintf(stdout, "%v\n\n", outcome.ScriptErr)
 			}
 		}
 		if outcome.Result.Err != nil || outcome.ScriptErr != nil {
@@ -159,7 +159,7 @@ func runCommand(args []string, stdout io.Writer) error {
 func sendWithScripts(c *client.Client, req httpfile.Request, baseVars map[string]string, global *script.GlobalState) requestOutcome {
 	if req.PreScript != "" {
 		if err := script.RunPreScript(req.PreScript, global); err != nil {
-			return requestOutcome{Result: client.Result{Request: req, Err: fmt.Errorf("pre-request script: %w", err)}}
+			return requestOutcome{Result: client.Result{Request: req, Err: err}}
 		}
 	}
 

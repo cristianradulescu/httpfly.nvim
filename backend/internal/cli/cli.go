@@ -25,9 +25,9 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 
 	switch args[0] {
 	case "run":
-		return runCommand(args[1:], stdout)
+		return runCommand(args[1:], stdout, stderr)
 	case "validate":
-		return validateCommand(args[1:], stdout)
+		return validateCommand(args[1:], stdout, stderr)
 	case "convert":
 		return convertCommand(args[1:], stdin, stdout, stderr)
 	case "version", "-version", "--version":

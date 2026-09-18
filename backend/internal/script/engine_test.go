@@ -1,9 +1,11 @@
 package script
 
 import (
+	"bytes"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/cristianradulescu/httpfly/internal/client"
@@ -137,5 +139,31 @@ func TestRunPreScriptRuntimeErrorReturnsError(t *testing.T) {
 	global := NewGlobalState(t.TempDir(), "", nil)
 	if err := RunPreScript(`error("boom")`, global); err == nil {
 		t.Fatal("expected an error from a script that calls error()")
+	}
+}
+
+func TestPrintGoesToPrintOutputNotStdout(t *testing.T) {
+	var buf bytes.Buffer
+	orig := PrintOutput
+	PrintOutput = &buf
+	t.Cleanup(func() { PrintOutput = orig })
+
+	global := NewGlobalState(t.TempDir(), "", nil)
+	if err := RunPreScript(`print("debug", 42, nil)`, global); err != nil {
+		t.Fatalf("RunPreScript: %v", err)
+	}
+	if got, want := buf.String(), "debug\t42\tnil\n"; got != want {
+		t.Errorf("print output = %q, want %q", got, want)
+	}
+}
+
+func TestPreScriptErrorIsPrefixedOnce(t *testing.T) {
+	global := NewGlobalState(t.TempDir(), "", nil)
+	err := RunPreScript(`error("boom")`, global)
+	if err == nil {
+		t.Fatal("RunPreScript: want error")
+	}
+	if got := strings.Count(err.Error(), "pre-request script:"); got != 1 {
+		t.Errorf("prefix appears %d times in %q, want exactly 1", got, err.Error())
 	}
 }

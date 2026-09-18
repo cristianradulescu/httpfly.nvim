@@ -209,7 +209,7 @@ the report format). At a glance:
 
 | Severity | Examples |
 |---|---|
-| `ERROR` (blocks the request / fails validation) | Missing or empty `@name`; a separator-line name that conflicts with an explicit `# @name` in the same block; request line that isn't `METHOD URL [PROTO]`; relative URL; malformed header line (no `:`); `@proxy` that isn't absolute; `@name`/`@lang` declared in the prelude; a malformed or unterminated script block; a script with invalid Lua syntax. |
+| `ERROR` (blocks the request / fails validation) | Missing or empty `@name`; the same `@name` used by more than one request in the file; a separator-line name that conflicts with an explicit `# @name` in the same block; request line that isn't `METHOD URL [PROTO]`; relative URL; malformed header line (no `:`); `@proxy` that isn't absolute; `@name`/`@lang` declared in the prelude; a malformed or unterminated script block; a script with invalid Lua syntax. |
 | `WARN` (still usable, just worth knowing) | Unknown `@key`; non-standard HTTP method; unrecognized `PROTO` string; `@lang` set to something other than `lua`; undefined `{{variable}}`; a `< path/to/file` body reference that couldn't be read. |
 
 `doc/examples/invalid.http` in this repo demonstrates each of these, one

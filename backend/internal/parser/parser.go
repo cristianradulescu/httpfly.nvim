@@ -88,12 +88,26 @@ func AnalyzeWithEnv(r io.Reader, envVars map[string]string) (*Result, error) {
 
 	result := &Result{Variables: globalVars, GlobalIssues: globalIssues}
 	index := 0
+	seenNames := make(map[string]int) // @name -> Index of the block that first declared it
 	for _, block := range requestBlocks {
 		req, issues, ok := validateBlock(block, globalVars, globalMetadata)
 		if !ok {
 			continue
 		}
 		index++
+		// @name is the sole identifier "-name" selects by, so a repeat would
+		// make one of the two blocks silently unreachable.
+		if req.Name != "" {
+			if first, dup := seenNames[req.Name]; dup {
+				issues = append(issues, Issue{
+					Element:  "metadata:name",
+					Severity: SeverityError,
+					Message:  fmt.Sprintf("duplicate @name %q (already used by request %d)", req.Name, first),
+				})
+			} else {
+				seenNames[req.Name] = index
+			}
+		}
 		result.Blocks = append(result.Blocks, BlockResult{Index: index, Request: req, Issues: issues})
 	}
 	return result, nil

@@ -5,6 +5,9 @@ package script
 
 import (
 	"fmt"
+	"io"
+	"os"
+	"strings"
 
 	lua "github.com/yuin/gopher-lua"
 
@@ -76,17 +79,37 @@ func RunPostScript(source string, result client.Result, global *GlobalState) err
 	return nil
 }
 
+// PrintOutput is where a script's print(...) calls go. It defaults to
+// stderr rather than Lua's usual stdout so that debugging output from a
+// script can never end up mixed into "run -json"'s stdout, which must stay
+// a single clean JSON document for tools (e.g. the neovim plugin) reading it.
+var PrintOutput io.Writer = os.Stderr
+
 // newState returns a fresh Lua VM with the standard library plus
 // cmd/ioutil/filepath/json preloaded under their own names (so a script
 // calls e.g. ioutil.readfile(...), cmd.execute(...), json.decode(...)
-// directly, per those packages' own documented API).
+// directly, per those packages' own documented API), and print redirected
+// to PrintOutput.
 func newState() *lua.LState {
 	L := lua.NewState()
 	luacmd.Preload(L)
 	luaioutil.Preload(L)
 	luafilepath.Preload(L)
 	luajson.Preload(L)
+	L.SetGlobal("print", L.NewFunction(luaPrint))
 	return L
+}
+
+// luaPrint mirrors Lua's own print (tab-separated tostring of every
+// argument, then a newline) but writes to PrintOutput instead of stdout.
+func luaPrint(L *lua.LState) int {
+	n := L.GetTop()
+	parts := make([]string, 0, n)
+	for i := 1; i <= n; i++ {
+		parts = append(parts, L.ToStringMeta(L.Get(i)).String())
+	}
+	fmt.Fprintln(PrintOutput, strings.Join(parts, "\t"))
+	return 0
 }
 
 // registerClient exposes "client.global:get(name)" / "client.global:set(name, value)".

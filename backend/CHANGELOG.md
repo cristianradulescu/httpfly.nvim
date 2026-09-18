@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- A script's `print(...)` output now goes to stderr instead of stdout, so
+  debugging output from a pre-/post-request script can never end up mixed
+  into `run -json`'s stdout (which must stay a single clean JSON document
+  for tools reading it).
+- `run`/`validate` now print flag-parsing errors and their usage text to
+  stderr, matching `convert`, for the same reason.
+
+### Fixed
+
+- The same `@name` used by more than one request block in a file is now a
+  validation `ERROR` (reported on the second block). Previously `-name X`
+  silently picked the first match, making the other block unreachable.
+- A pre-request script failure was reported with a doubled
+  `pre-request script: pre-request script: ...` prefix; it's now prefixed
+  once. The plain-text `run` output likewise no longer prefixes a
+  post-request script error twice.
+
 ## [0.3.1] - 2026-09-15
 
 ### Added
