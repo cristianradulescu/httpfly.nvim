@@ -346,6 +346,20 @@ func validateBlock(lines []string, globalVars, globalMetadata map[string]string)
 		if line == "" {
 			break
 		}
+		if strings.HasPrefix(line, "#") {
+			// A plain comment among the headers is skipped -- so a header
+			// can be commented out and back in without moving it. Metadata
+			// can't live here, though: silently ignoring a misplaced
+			// "# @name" would make the block unreachable via -name.
+			if key, _, isMetadata := parseMetadata(line); isMetadata {
+				issues = append(issues, Issue{
+					Element:  "metadata:" + key,
+					Severity: SeverityError,
+					Message:  fmt.Sprintf("\"@%s\" metadata must come before the request line, not among the headers", key),
+				})
+			}
+			continue
+		}
 		header, headerIssues := parseHeaderLine(line)
 		if !hasError(headerIssues) {
 			req.RawHeaders = append(req.RawHeaders, header)

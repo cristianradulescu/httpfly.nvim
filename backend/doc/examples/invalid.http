@@ -78,3 +78,12 @@ GET http://localhost:8080/get HTTP/1.1
 # @name SameNameTwice
 # Reuses the @name above, so "-name SameNameTwice" would be ambiguous. [ERROR]
 GET http://localhost:8080/get HTTP/1.1
+
+###
+# @name MetadataAfterRequestLine
+GET http://localhost:8080/get HTTP/1.1
+# @proxy http://localhost:3128
+# Metadata among the headers -- it must come before the request line. [ERROR]
+# (A plain comment like this one is fine here, and so is a commented-out
+# header -- that's how you disable one temporarily.)
+Accept: application/json

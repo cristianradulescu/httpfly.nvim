@@ -510,3 +510,55 @@ func TestAnalyzeDuplicateNameAcrossBlocksErrors(t *testing.T) {
 		t.Errorf("Parse succeeded, want an error for the duplicate @name")
 	}
 }
+
+func TestAnalyzeCommentLinesAmongHeadersAreSkipped(t *testing.T) {
+	src := strings.Join([]string{
+		"###",
+		"# @name Commented",
+		"GET http://localhost:8080/get HTTP/1.1",
+		"# a note about the next header",
+		"Accept: application/json",
+		"# Authorization: Bearer disabled-for-now",
+		"X-Last: yes",
+		"",
+		"# this is body, not a comment",
+	}, "\n")
+	result, err := Analyze(strings.NewReader(src))
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	block := result.Blocks[0]
+	if len(block.Issues) != 0 {
+		t.Fatalf("issues = %+v, want none", block.Issues)
+	}
+	var names []string
+	for _, h := range block.Request.Headers {
+		names = append(names, h.Name)
+	}
+	if want := []string{"Accept", "X-Last"}; !reflect.DeepEqual(names, want) {
+		t.Errorf("headers = %v, want %v", names, want)
+	}
+	if want := "# this is body, not a comment"; block.Request.Body != want {
+		t.Errorf("body = %q, want %q", block.Request.Body, want)
+	}
+}
+
+func TestAnalyzeMetadataAmongHeadersErrors(t *testing.T) {
+	src := "###\nGET http://localhost:8080/get HTTP/1.1\n# @name TooLate\nAccept: */*\n"
+	result, err := Analyze(strings.NewReader(src))
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	var found bool
+	for _, issue := range result.Blocks[0].Issues {
+		if issue.Element == "metadata:name" && issue.Severity == SeverityError && strings.Contains(issue.Message, "before the request line") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("issues = %+v, want a misplaced-metadata error", result.Blocks[0].Issues)
+	}
+	if result.Blocks[0].Request.Name != "" {
+		t.Errorf("name = %q, want it not to be picked up from after the request line", result.Blocks[0].Request.Name)
+	}
+}

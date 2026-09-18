@@ -200,7 +200,24 @@ reasoning as an undefined `{{variable}}`), escalated to a hard error by
 ## Comments
 
 Any `#`-prefixed line that isn't `# @key value` metadata is a plain
-comment and is ignored.
+comment and is ignored — before the request line, and also among the
+headers, so a header can be disabled and re-enabled in place:
+
+```http
+###
+# @name WithoutAuth
+GET http://localhost:8080/get HTTP/1.1
+# Authorization: Bearer {{token}}
+Accept: application/json
+```
+
+Two things are *not* comments:
+
+- Inside the body (everything after the blank line that ends the headers),
+  a `#` line is body content and is sent as-is.
+- `# @key value` metadata placed among the headers is an `ERROR` — metadata
+  belongs before the request line. Ignoring a misplaced `# @name` silently
+  would leave the block unreachable via `-name`.
 
 ## Validation
 
@@ -209,7 +226,7 @@ the report format). At a glance:
 
 | Severity | Examples |
 |---|---|
-| `ERROR` (blocks the request / fails validation) | Missing or empty `@name`; the same `@name` used by more than one request in the file; a separator-line name that conflicts with an explicit `# @name` in the same block; request line that isn't `METHOD URL [PROTO]`; relative URL; malformed header line (no `:`); `@proxy` that isn't absolute; `@name`/`@lang` declared in the prelude; a malformed or unterminated script block; a script with invalid Lua syntax. |
+| `ERROR` (blocks the request / fails validation) | Missing or empty `@name`; the same `@name` used by more than one request in the file; a separator-line name that conflicts with an explicit `# @name` in the same block; request line that isn't `METHOD URL [PROTO]`; relative URL; malformed header line (no `:`); `@proxy` that isn't absolute; `@name`/`@lang` declared in the prelude; `# @key` metadata placed among the headers instead of before the request line; a malformed or unterminated script block; a script with invalid Lua syntax. |
 | `WARN` (still usable, just worth knowing) | Unknown `@key`; non-standard HTTP method; unrecognized `PROTO` string; `@lang` set to something other than `lua`; undefined `{{variable}}`; a `< path/to/file` body reference that couldn't be read. |
 
 `doc/examples/invalid.http` in this repo demonstrates each of these, one

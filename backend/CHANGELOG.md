@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- `#` comment lines are now allowed among a request's headers, so a header
+  can be commented out and back in without moving it. A `# @key` metadata
+  line in that position is an `ERROR` (metadata must precede the request
+  line) rather than being silently ignored. `#` lines inside the body are
+  still body content, unchanged.
+
 ### Changed
 
 - A script's `print(...)` output now goes to stderr instead of stdout, so
