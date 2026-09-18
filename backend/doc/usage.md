@@ -9,7 +9,7 @@ httpfly <command> [arguments]
 ### `run`
 
 ```
-httpfly run [-name X] [-env E] [-s | -json] [-v] [-download F] <file.http>
+httpfly run [-name X] [-env E] [-s | -json] [-v] [-download F] [-timeout D] <file.http>
 ```
 
 Parses `<file.http>`, sends every request it defines (in file order, or
@@ -191,6 +191,7 @@ exits non-zero, since a command is required).
 | `-json` | `run` | Print a JSON array instead of plain text. See below. Mutually exclusive with `-s`/`-silent`. |
 | `-v`, `-verbose` | `run` | Also report TLS connection details (version, cipher suite, ALPN protocol, peer certificate). No effect on a plain HTTP (non-TLS) request. |
 | `-download F` | `run` | Save the response body to file `F` instead of printing it — see [below](#-download). Mutually exclusive with `-s`/`-silent`; compatible with `-json`. |
+| `-timeout D` | `run` | Per-request timeout, as a Go duration such as `30s` or `2m`, covering the connection, the request, and reading the whole response body (so a large `-download` over a slow link may need a longer one). `0` disables it. Default `30s`. A request that hits it fails with a transport error like any other, counting toward the exit code. |
 | `-file F` | `convert from-curl` | Read the curl command from file `F` instead of stdin. |
 
 `-s`/`-silent` and `-v`/`-verbose` are two names for the same flag — use

@@ -41,6 +41,7 @@ func runCommand(args []string, stdout, stderr io.Writer) error {
 	fs.BoolVar(&verbose, "v", false, "shorthand for -verbose")
 	envName := fs.String("env", "", "apply variables from the named environment in http-client.env.json")
 	download := fs.String("download", "", "save the response body to this file instead of printing it (only one request may be selected; the file's parent directory must already exist)")
+	timeout := fs.Duration("timeout", client.DefaultTimeout, "per-request timeout covering connection, request, and reading the whole response body, e.g. 30s, 2m, 0 for none")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -52,6 +53,9 @@ func runCommand(args []string, stdout, stderr io.Writer) error {
 	}
 	if silent && *download != "" {
 		return fmt.Errorf("run: -silent and -download are mutually exclusive")
+	}
+	if *timeout < 0 {
+		return fmt.Errorf("run: -timeout must be zero (no timeout) or positive, got %s", *timeout)
 	}
 	path := fs.Arg(0)
 
@@ -97,6 +101,7 @@ func runCommand(args []string, stdout, stderr io.Writer) error {
 	global := script.NewGlobalState(dir, *envName, persisted)
 
 	c := client.New()
+	c.HTTP.Timeout = *timeout
 	var failed int
 	var outcomes []requestOutcome
 	for _, req := range requests {

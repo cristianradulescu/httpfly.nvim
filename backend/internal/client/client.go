@@ -15,7 +15,10 @@ import (
 	"github.com/cristianradulescu/httpfly/internal/httpfile"
 )
 
-const defaultTimeout = 30 * time.Second
+// DefaultTimeout is the per-request timeout New applies (see Client.HTTP)
+// when the caller doesn't override it: covering connection, request, and
+// reading the whole response body.
+const DefaultTimeout = 30 * time.Second
 
 // Result is the outcome of sending a single request. A non-nil Err means the
 // request couldn't be sent or the response couldn't be read -- it does not
@@ -44,10 +47,12 @@ type Client struct {
 	proxyClients map[string]*http.Client // keyed by httpfile.Request.Proxy
 }
 
-// New returns a Client with a default timeout.
+// New returns a Client with DefaultTimeout. Set HTTP.Timeout before the
+// first Send to use a different one; a proxy client created later copies
+// whatever HTTP.Timeout is at that point.
 func New() *Client {
 	return &Client{
-		HTTP:         &http.Client{Timeout: defaultTimeout},
+		HTTP:         &http.Client{Timeout: DefaultTimeout},
 		proxyClients: make(map[string]*http.Client),
 	}
 }

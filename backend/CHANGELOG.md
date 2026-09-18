@@ -8,6 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `run -timeout D` sets the per-request timeout (default `30s`, `0` to
+  disable) as a Go duration like `2m`, covering the connection, the
+  request, and reading the whole response body — previously the 30s was
+  hardcoded, so a large `-download` over a slow link had no way to
+  succeed.
 - Dynamic variables, matching JetBrains HTTP Client's names: `{{$uuid}}`,
   `{{$timestamp}}`, `{{$isoTimestamp}}` and `{{$randomInt}}` are generated
   fresh for every occurrence when a request is resolved. Any other
