@@ -245,6 +245,16 @@ With `-v`, `response.tls` includes the *full* peer certificate chain (every
 certificate, not just the leaf — the plain-text output only prints the
 leaf, for brevity).
 
+**Bodies are JSON strings, so they must be text.** `response.body` (and
+`request.body`) is the raw bytes as a string; any byte sequence that
+isn't valid UTF-8 is replaced with U+FFFD (`�`) by the JSON encoder, so
+a binary response (an image, a zip, ...) is *not* recoverable from
+`-json` output. Use [`-download F`](#-download) for a binary response —
+it writes the exact bytes to `F` and reports `download_path` in place of
+the body. Likewise a request body spliced from a binary
+[`< path` file reference](http-file-format.md#file-uploads) appears
+lossily in `request.body`; the bytes actually sent are exact.
+
 ## `-download`
 
 ```sh

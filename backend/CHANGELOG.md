@@ -32,6 +32,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Documented that `-json` bodies are plain JSON strings, so a binary
+  response is lossy there (invalid UTF-8 becomes U+FFFD) — use
+  `-download` for exact bytes. Behavior unchanged; this was previously
+  unstated.
 - A `multipart/*` body is now sent with CRLF line endings, as RFC 2046
   requires, regardless of how the `.http` file is saved — previously it
   went out byte-for-byte with bare LF, which strict servers reject.
