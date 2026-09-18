@@ -308,8 +308,43 @@ func TestResolveMultipartCRLFLeavesSplicedFileBytesAlone(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Analyze: %v", err)
 	}
+	// Analyze only probes the file; the send-time Resolve does the splice.
+	resolved, issues := Resolve(result.Blocks[0].Request, nil)
+	if hasError(issues) {
+		t.Fatalf("Resolve issues = %+v", issues)
+	}
 	want := "--B\r\nContent-Disposition: form-data; name=\"f\"; filename=\"data.bin\"\r\n\r\n" + fileBytes + "\r\n--B--"
-	if got := result.Blocks[0].Request.Body; got != want {
+	if got := resolved.Body; got != want {
 		t.Errorf("body = %q, want %q", got, want)
+	}
+}
+
+func TestAnalyzeOnlyProbesFileReferencesWithoutReading(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(dir+"/big.bin", []byte("bytes-that-must-not-be-read"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	chdir(t, dir)
+
+	src := "###\n# @name Up\nPUT http://localhost:8080/put HTTP/1.1\n\n< ./big.bin\n\n###\n# @name Missing\nPUT http://localhost:8080/put HTTP/1.1\n\n< ./nope.bin\n"
+	result, err := Analyze(strings.NewReader(src))
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	if got, want := result.Blocks[0].Request.Body, "< ./big.bin"; got != want {
+		t.Errorf("analyzed Body = %q, want the unspliced marker %q", got, want)
+	}
+	if len(result.Blocks[0].Issues) != 0 {
+		t.Errorf("issues for an existing file = %+v, want none", result.Blocks[0].Issues)
+	}
+	issue := findIssue(result.Blocks[1].Issues, "body")
+	if issue == nil || !IsMissingFileIssue(*issue) {
+		t.Errorf("issue for a missing file = %+v, want a missing-file warning even without reading", issue)
+	}
+
+	// The send-time Resolve still splices for real.
+	resolved, issues := Resolve(result.Blocks[0].Request, nil)
+	if hasError(issues) || resolved.Body != "bytes-that-must-not-be-read" {
+		t.Errorf("Resolve Body = %q, issues = %+v, want the spliced bytes", resolved.Body, issues)
 	}
 }

@@ -91,7 +91,14 @@ var fileReferencePattern = regexp.MustCompile(`^<\s+(\S.*)$`)
 // script might still create it before the request is actually sent --
 // see IsMissingFileIssue, which lets a caller escalate this the same way
 // IsUndefinedVariableIssue already is.
-func spliceFileReferences(body string) (string, []Issue) {
+//
+// With read == false, nothing is spliced: each referenced file is only
+// checked to be openable (same warning if not) and the "< path" line is
+// left in place. That's the parse-time (Analyze/validate) mode -- it
+// reports the same issues without reading a possibly large file whose
+// bytes would only be thrown away, leaving the single real read to the
+// send-time Resolve.
+func spliceFileReferences(body string, read bool) (string, []Issue) {
 	if !strings.Contains(body, "<") {
 		return body, nil
 	}
@@ -104,13 +111,16 @@ func spliceFileReferences(body string) (string, []Issue) {
 			continue
 		}
 		path := m[1]
-		content, err := os.ReadFile(path)
+		content, err := readOrProbe(path, read)
 		if err != nil {
 			issues = append(issues, Issue{
 				Element:  "body",
 				Severity: SeverityWarning,
 				Message:  fmt.Sprintf("%s%q: %v", missingFilePrefix, path, err),
 			})
+			continue
+		}
+		if !read {
 			continue
 		}
 		lines[i] = string(content)
@@ -122,6 +132,19 @@ func spliceFileReferences(body string) (string, []Issue) {
 		}
 	}
 	return strings.Join(lines, "\n"), issues
+}
+
+// readOrProbe reads path when read is true; otherwise it only opens and
+// closes it, returning nil content and whatever error opening produced.
+func readOrProbe(path string, read bool) ([]byte, error) {
+	if read {
+		return os.ReadFile(path)
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	return nil, f.Close()
 }
 
 // isMultipartContentType reports whether a Content-Type header value is
@@ -416,7 +439,7 @@ func validateBlock(lines []string, globalVars, globalMetadata map[string]string)
 	req.RawBody = trimBody(bodyLines)
 
 	vars := mergeVars(globalVars, localVars)
-	resolved, resolveIssues := Resolve(req, vars)
+	resolved, resolveIssues := resolve(req, vars, false)
 	issues = append(issues, resolveIssues...)
 
 	return resolved, issues, true
@@ -436,7 +459,17 @@ func validateBlock(lines []string, globalVars, globalMetadata map[string]string)
 // earlier request's post-request script just set -- so a request sees the
 // most up-to-date variables available right before it's used, not just
 // whatever was known when the file was first parsed.
+//
+// Resolve reads and splices "< path" file references into Body. The
+// parse-time pass in validateBlock uses resolve(req, vars, false) instead,
+// which only checks each file is openable and leaves the "< path" line in
+// the reported Body -- so a file's bytes are read exactly once, by the
+// caller about to send them, and never by validate at all.
 func Resolve(req httpfile.Request, vars map[string]string) (httpfile.Request, []Issue) {
+	return resolve(req, vars, true)
+}
+
+func resolve(req httpfile.Request, vars map[string]string, readFiles bool) (httpfile.Request, []Issue) {
 	var issues []Issue
 
 	if req.RawURL != "" {
@@ -482,7 +515,7 @@ func Resolve(req httpfile.Request, vars map[string]string) (httpfile.Request, []
 		// Before splicing, so a file's own bytes are never touched.
 		body = toCRLF(body)
 	}
-	body, fileIssues := spliceFileReferences(body)
+	body, fileIssues := spliceFileReferences(body, readFiles)
 	issues = append(issues, fileIssues...)
 	req.Body = body
 

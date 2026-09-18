@@ -251,6 +251,8 @@ A file that can't be read is a warning at `validate` time (a pre-request
 script might still create it before the request is actually sent — same
 reasoning as an undefined `{{variable}}`), escalated to a hard error by
 `run`/`convert to-curl` immediately before it's actually needed.
+`validate` only checks that the file can be opened; the bytes are read
+exactly once, by `run`, right before the request is sent.
 
 `convert from-curl`/`convert to-curl` understand this too — see
 [Usage](usage.md#convert-from-curl).

@@ -32,6 +32,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- A `< path` file reference is now read exactly once, by `run` right
+  before sending; `validate` (and `run`'s parse pass) only check that the
+  file can be opened. Previously every parse read the whole file, so
+  `validate` read upload files just to discard them and `run` read each
+  twice.
 - Documented that `-json` bodies are plain JSON strings, so a binary
   response is lossy there (invalid UTF-8 becomes U+FFFD) — use
   `-download` for exact bytes. Behavior unchanged; this was previously
