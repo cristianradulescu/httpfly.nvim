@@ -2,7 +2,7 @@
 
 Send `.http` requests from Neovim using
 [httpfly](https://github.com/cristianradulescu/httpfly) and view the
-response as readable markdown.
+response in a colored, box-drawn result pane.
 
 ![httpfly.nvim showing a request file next to the rendered response](screenshot.png)
 
@@ -20,8 +20,8 @@ does that. This plugin just wires it into Neovim:
 - discovers/selects the httpfly environment (`http-client.env.json`, plus
   an optional `http-client.private.env.json` overlay) for the current file
 - runs `httpfly run` on the request under your cursor (or the whole file)
-- formats the JSON result as markdown (request/response headers, bodies
-  pretty-printed when JSON, status line) in a split
+- formats the JSON result (request/response headers as a table, bodies
+  pretty-printed and syntax-highlighted when JSON, status line) in a split
 - lets you preview values that got truncated in header tables (e.g. long
   bearer tokens) in a floating window
 - saves a copy of every result under `.httpfly/history/`
@@ -79,7 +79,6 @@ require("httpfly").setup({
   keymaps = true,                              -- set the default <leader>h* keymaps below
   max_header_value_len = 100,                  -- header table cell truncation length
   preview_keymap = "K",                        -- keymap to preview a truncated value
-  output_style = "markdown",                   -- "markdown" or "unicode"
   timeout = nil,                               -- per-request timeout as a Go duration ("2m"); nil = httpfly's 30s default
 })
 ```
@@ -97,19 +96,13 @@ Open a `.http` file and:
 | `:HttpSendAll`  | `<leader>ha`  | Send every request in the file                        |
 | `:HttpSessionClear` | `<leader>hc` | Clear persisted `client.global` state (see below) |
 
-The response opens in a vertical split as markdown (`filetype = "markdown"`).
-Set `output_style = "unicode"` for the same layout (headers as a table,
-request/response sections, a body block) rendered with Unicode box-drawing
-characters (`┌─┬─┐`, `━━━`) instead of markdown syntax — no `**bold**`,
-`` ``` `` fences, or `|---|` pipes, `filetype = "text"`. It's colored too
-(status/method/section titles/JSON body syntax — keys, strings, numbers,
-booleans, null/etc.), via highlights the plugin applies directly to the
-buffer — no markdown-rendering plugin or treesitter parser needed. Useful
-if you don't want a markdown-rendering plugin touching this
-buffer, or just prefer that look. History files (see below) get `.txt`
-instead of `.md` to match. In that split, put the
-cursor on a truncated header value and press `K` to see the full value in a
-floating window (works the same in both styles).
+The response opens in a vertical split (`filetype = "text"`): headers as a
+table, request/response sections and a body block, drawn with Unicode
+box-drawing characters (`┌─┬─┐`, `━━━`) and colored (status, method,
+section titles, JSON body syntax — keys, strings, numbers, booleans,
+null) via highlights the plugin applies directly to the buffer, with no
+extra plugin or treesitter parser needed. In that split, put the cursor on a truncated header value and press `K` to see the full
+value in a floating window.
 
 The currently selected environment for the file is shown in the winbar
 (`env: dev`, or `env: (none, :HttpEnv)` before you've picked one).
@@ -165,8 +158,8 @@ don't interfere with each other. Run `:HttpEnvVars` any time to see exactly
 which values are in effect for the selected environment (the precedence
 chain above, then persisted `client.global` state — see below — overriding
 all of it, the same order httpfly itself applies when sending requests).
-Variables added or overridden by persisted state are marked `[session]` /
-`[overridden by session]`.
+Variables added or overridden by persisted state are marked `(session)` /
+`(overridden by session)`.
 
 ### Directory resolution
 

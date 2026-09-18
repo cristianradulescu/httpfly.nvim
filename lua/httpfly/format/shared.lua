@@ -16,9 +16,9 @@ function M.extract_json(text)
   return text:sub(start)
 end
 
--- truncates long single-line values, which otherwise break markdown table
--- rendering (e.g. in render-markdown.nvim) or just make plain output hard
--- to scan; returns display text plus the full original text if truncation
+-- truncates long single-line values (a JWT in an Authorization header
+-- would otherwise stretch the headers table far past the window width);
+-- returns display text plus the full original text if truncation
 -- happened, nil otherwise
 function M.truncate(value)
   value = tostring(value)

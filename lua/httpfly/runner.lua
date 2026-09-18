@@ -73,11 +73,10 @@ local function present(buf, cwd, cmd_str, lines, truncations, highlights, raw_fa
     return
   end
 
-  local filetype = config.options.output_style == "unicode" and "text" or "markdown"
-  local history_ext = config.options.output_style == "unicode" and "txt" or "md"
+  local filetype = "text"
 
   if lines then
-    history.save(lines, history_ext, cwd)
+    history.save(lines, cwd)
   else
     -- fall back to raw output (e.g. httpfly crashed before emitting JSON)
     filetype = "httpresult"
@@ -102,21 +101,17 @@ end
 -- stdout, which stays pure JSON), so this is where a script's debugging
 -- output shows up -- it must be shown even on a successful (exit 0) run,
 -- unlike the raw fallback below, which only shows stderr on failure
-local function append_stderr(lines, stderr)
+local function append_stderr(lines, highlights, stderr)
   if not lines or not stderr or stderr == "" then
     return
   end
   local chunk = vim.split(stderr:gsub("\n+$", ""), "\n")
-  if config.options.output_style == "unicode" then
-    table.insert(lines, "stderr")
-    vim.list_extend(lines, chunk)
-  else
-    table.insert(lines, "**stderr**")
-    table.insert(lines, "")
-    table.insert(lines, "```")
-    vim.list_extend(lines, chunk)
-    table.insert(lines, "```")
+  table.insert(lines, "stderr")
+  if highlights then
+    -- same look as the renderer's own section titles ("Command", "Body", ...)
+    table.insert(highlights, { #lines, 0, -1, "Statement" })
   end
+  vim.list_extend(lines, chunk)
   table.insert(lines, "")
 end
 
@@ -149,7 +144,7 @@ local function run(cmd, cwd)
       if res.stdout then
         lines, truncations, highlights = format.render(res.stdout, cmd_str)
       end
-      append_stderr(lines, res.stderr)
+      append_stderr(lines, highlights, res.stderr)
       present(
         buf,
         cwd,
@@ -198,7 +193,7 @@ local function run_many(cmds, cwd)
       if #combined > 0 then
         lines, truncations, highlights = format.render_decoded(combined, combined_cmd_str)
       end
-      append_stderr(lines, table.concat(stderr_chunks, ""))
+      append_stderr(lines, highlights, table.concat(stderr_chunks, ""))
       local fallback = { "Command:", "" }
       vim.list_extend(fallback, vim.split(combined_cmd_str, "\n"))
       table.insert(fallback, "")

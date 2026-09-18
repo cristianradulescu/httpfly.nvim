@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- The markdown output style, and with it the `output_style` option — the
+  unicode (box-drawing, directly highlighted) style is now the only one.
+  The result buffer is always `filetype = "text"` and history files always
+  get `.txt`. Drop `output_style` from your `setup({})` call.
+- `:HttpEnvVars` no longer renders its popup as markdown either: it's now
+  a plain-text list in the same box-drawn style as the result pane (a
+  ruled title, each variable name highlighted with its value on the
+  indented line below, wrapping as before), `filetype = "text"`.
+
 ### Added
 
 - New `timeout` option (e.g. `timeout = "2m"`), passed through as

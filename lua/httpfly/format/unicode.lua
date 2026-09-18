@@ -109,8 +109,7 @@ local function append_headers_table(out, truncations, highlights, headers)
   hl_line(highlights, out, "Comment")
 end
 
--- a body "block" delimited by light horizontal rules, the unicode
--- equivalent of a markdown fenced code block
+-- a body "block" delimited by light horizontal rules
 local function body_block(out, highlights, body, headers)
   if not body or body == "" then
     table.insert(out, "(empty body)")

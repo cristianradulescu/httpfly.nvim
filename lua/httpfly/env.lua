@@ -208,39 +208,48 @@ function M.vars(bufnr)
   return vars, name, session_keys, env_keys
 end
 
--- markdown text plus a { line, col_start, col_end } list marking where the
--- session-provenance marker (if any) sits on that heading line, so the
--- caller can highlight it once the buffer is populated
-local function render_vars_markdown(name, vars, session_keys, env_keys)
+-- plain-text lines in the same box-drawn style as the result pane (a
+-- heavy-ruled title, then one entry per variable: its name, a
+-- provenance marker if it came from persisted session state, and its
+-- value on the indented line below), plus a { line0, col_start, col_end,
+-- group } list of highlight spans for the caller to apply once the buffer
+-- is populated. Byte offsets, as nvim_buf_add_highlight expects.
+local function render_vars(name, vars, session_keys, env_keys)
   local keys = {}
   for k in pairs(vars) do
     table.insert(keys, k)
   end
   table.sort(keys)
 
-  local lines = { "# Environment: " .. name, "" }
-  local highlights = {}
+  local title = " Environment: " .. name
+  local rule = string.rep("━", math.max(vim.fn.strdisplaywidth(title) + 1, 20))
+  local lines = { rule, title, rule, "" }
+  local highlights = {
+    { 0, 0, -1, "Comment" },
+    { 1, 0, -1, "Title" },
+    { 2, 0, -1, "Comment" },
+  }
 
   for _, k in ipairs(keys) do
-    local heading = "## `" .. k .. "`"
     local marker = ""
     if session_keys[k] then
-      marker = env_keys[k] and " _(overridden by session)_" or " _(session)_"
+      marker = env_keys[k] and "  (overridden by session)" or "  (session)"
     end
-    table.insert(lines, heading .. marker)
+    table.insert(lines, k .. marker)
+    table.insert(highlights, { #lines - 1, 0, #k, "Identifier" })
     if marker ~= "" then
-      table.insert(highlights, { #lines - 1, #heading, #heading + #marker })
+      table.insert(highlights, { #lines - 1, #k, #k + #marker, "WarningMsg" })
     end
-    table.insert(lines, "")
-    -- value on its own line/paragraph (not a code fence, not a table cell)
-    -- so long unbroken strings like JWTs wrap naturally in the window
-    -- instead of overflowing or breaking table rendering
-    table.insert(lines, tostring(vars[k]))
+    -- value on its own indented line so long unbroken strings like JWTs
+    -- wrap naturally in the window instead of pushing the name off-screen
+    table.insert(lines, "  " .. tostring(vars[k]))
+    table.insert(highlights, { #lines - 1, 0, -1, "String" })
     table.insert(lines, "")
   end
 
   if #keys == 0 then
-    table.insert(lines, "_(no variables)_")
+    table.insert(lines, "(no variables)")
+    table.insert(highlights, { #lines - 1, 0, -1, "Comment" })
   end
 
   return lines, highlights
@@ -254,7 +263,7 @@ function M.show_vars(bufnr)
     return
   end
 
-  local lines, highlights = render_vars_markdown(name, vars, session_keys, env_keys)
+  local lines, highlights = render_vars(name, vars, session_keys, env_keys)
 
   local width = math.min(90, math.floor(vim.o.columns * 0.85))
   local rows = 0
@@ -267,11 +276,11 @@ function M.show_vars(bufnr)
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
   vim.bo[buf].modifiable = false
   vim.bo[buf].bufhidden = "wipe"
-  vim.bo[buf].filetype = "markdown"
+  vim.bo[buf].filetype = "text"
 
   local ns = vim.api.nvim_create_namespace("httpfly_env_vars")
   for _, h in ipairs(highlights) do
-    vim.api.nvim_buf_add_highlight(buf, ns, "WarningMsg", h[1], h[2], h[3])
+    vim.api.nvim_buf_add_highlight(buf, ns, h[4], h[1], h[2], h[3])
   end
 
   local win = vim.api.nvim_open_win(buf, true, {

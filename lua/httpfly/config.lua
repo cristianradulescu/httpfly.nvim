@@ -7,7 +7,6 @@ M.defaults = {
   keymaps = true,
   max_header_value_len = 100,
   preview_keymap = "K",
-  output_style = "markdown", -- "markdown" or "unicode"
   timeout = nil, -- per-request timeout passed as httpfly's "-timeout", e.g. "2m"; nil = httpfly's default (30s)
 }
 

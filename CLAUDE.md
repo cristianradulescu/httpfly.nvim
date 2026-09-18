@@ -12,8 +12,8 @@ JetBrains-style `.http` files (`###` request separators, `{{variables}}`,
 variable substitution, script execution, environment merging, persisting
 `client.global` variables across separate invocations. This plugin's job
 is: discover/select the environment, shell out to `httpfly run -json`, and
-turn its JSON output into readable markdown in a split, with a floating-
-window preview for values too long to fit in a markdown table cell.
+turn its JSON output into a colored, box-drawn result pane in a split,
+with a floating-window preview for values too long to fit in a table cell.
 
 There is no build step and no test suite — this is a small, dependency-free
 Lua plugin. Verification is done by exercising modules directly through
@@ -204,15 +204,11 @@ Request flow, end to end:
    as its own section even on a successful run). httpfly's
    `-json` output is a **top-level array** (not `{summary, requests}` the
    way the previous httpyac backend's was) — `format.lua` just checks the
-   decoded value is a table before handing it to a renderer picked by
-   `config.options.output_style` (`"markdown"` → `format/markdown.lua`,
-   `"unicode"` → `format/unicode.lua`; unrecognized values fall back to
-   markdown). Both renderers take the same `(decoded, cmd_str)` and return
-   the same `(lines, truncations)` shape, so `runner.lua` doesn't need to
-   know which one ran — only `config.options.output_style` decides the
-   result buffer's `filetype` (`"markdown"`/`"text"`) and the history
-   file's extension (`.md`/`.txt`), both set directly in `runner.lua`
-   rather than threaded back through the renderer.
+   decoded value is a table before handing it to the one renderer,
+   `format/unicode.lua` (`render(decoded, cmd_str)` → `(lines,
+   truncations, highlights)`). The result buffer's `filetype` (`"text"`)
+   and history extension (`.txt`) are set directly in
+   `runner.lua`/`history.lua`.
    - **Per-request JSON shape**: each array element is
      `{name, request:{method,url,proto,headers,body},
      response:{status_code,headers,body,download_path?,tls?}, final_url?,
@@ -260,7 +256,7 @@ Request flow, end to end:
    buffer (`httpfly://result`, opened in a vertical split), registers the
    truncation map with `lua/httpfly/preview.lua`, and saves the same
    rendered output to `<dir>/.httpfly/history/<YYYYMMDD-HHMMSS-microseconds>
-   .{md,txt}` (extension matches `config.options.output_style`) via
+   .txt` via
    `lua/httpfly/history.lua`, where `<dir>` is the same directory
    `env.resolve_cwd()` computed for this send, matching where httpfly's own
    `.httpfly/state.json` lives, so a project only needs one `.gitignore`
