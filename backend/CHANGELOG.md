@@ -27,6 +27,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- A `multipart/*` body is now sent with CRLF line endings, as RFC 2046
+  requires, regardless of how the `.http` file is saved — previously it
+  went out byte-for-byte with bare LF, which strict servers reject.
+  Bytes spliced in from a `< path` reference are untouched, and every
+  other body is still sent exactly as written.
 - A script's `print(...)` output now goes to stderr instead of stdout, so
   debugging output from a pre-/post-request script can never end up mixed
   into `run -json`'s stdout (which must stay a single clean JSON document

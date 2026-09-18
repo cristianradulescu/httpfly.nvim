@@ -114,8 +114,42 @@ func spliceFileReferences(body string) (string, []Issue) {
 			continue
 		}
 		lines[i] = string(content)
+		if strings.HasSuffix(line, "\r") {
+			// Keep the marker line's own CRLF terminator (see toCRLF) so
+			// the boundary that follows a spliced file part stays on a
+			// correctly-terminated line; the file's bytes are unchanged.
+			lines[i] += "\r"
+		}
 	}
 	return strings.Join(lines, "\n"), issues
+}
+
+// isMultipartContentType reports whether a Content-Type header value is
+// any multipart/* media type.
+func isMultipartContentType(contentType string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(contentType)), "multipart/")
+}
+
+// headerValue returns the value of the first header named name
+// (case-insensitively), or "" if there isn't one.
+func headerValue(headers []httpfile.Header, name string) string {
+	for _, h := range headers {
+		if strings.EqualFold(h.Name, name) {
+			return h.Value
+		}
+	}
+	return ""
+}
+
+// toCRLF normalizes every line ending in s to CRLF (idempotent: an
+// already-CRLF body is returned unchanged). RFC 2046 requires CRLF
+// between a multipart body's parts and part headers, and while lenient
+// servers (httpbin, Go's mime/multipart) accept bare LF, strict ones
+// reject it -- so a multipart body is sent with CRLF regardless of how
+// the .http file itself is saved, the same as JetBrains HTTP Client and
+// curl -F do.
+func toCRLF(s string) string {
+	return strings.ReplaceAll(strings.ReplaceAll(s, "\r\n", "\n"), "\n", "\r\n")
 }
 
 // BlockResult is the best-effort parsed request and validation issues for
@@ -444,6 +478,10 @@ func Resolve(req httpfile.Request, vars map[string]string) (httpfile.Request, []
 		issues = append(issues, undefinedVariableIssue("body", name))
 	}
 	issues = append(issues, cycleIssues("body", cycles)...)
+	if isMultipartContentType(headerValue(req.Headers, "Content-Type")) {
+		// Before splicing, so a file's own bytes are never touched.
+		body = toCRLF(body)
+	}
 	body, fileIssues := spliceFileReferences(body)
 	issues = append(issues, fileIssues...)
 	req.Body = body

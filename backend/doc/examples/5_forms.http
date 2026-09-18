@@ -16,6 +16,9 @@ username=alice&password=s3cret&remember=true
 # @name Multipart
 # The boundary in Content-Type must match the "--<boundary>" markers in
 # the body exactly (including the trailing "--" on the very last one).
+# The body is sent with CRLF line endings, as multipart requires, no
+# matter how this file is saved -- see "Multipart line endings" in
+# doc/http-file-format.md.
 POST http://localhost:8080/post HTTP/1.1
 Content-Type: multipart/form-data; boundary=WebAppBoundary
 

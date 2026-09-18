@@ -2,6 +2,7 @@ package parser
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -239,5 +240,76 @@ func TestResolveDynamicVariableInURLAndUnsupportedOneWarns(t *testing.T) {
 	issue := findIssue(block.Issues, "url")
 	if issue == nil || !IsUndefinedVariableIssue(*issue) || !strings.Contains(issue.Message, "$nope") {
 		t.Errorf("issue = %+v, want an undefined-variable warning for $nope", issue)
+	}
+}
+
+func TestResolveMultipartBodyUsesCRLF(t *testing.T) {
+	src := strings.Join([]string{
+		"###",
+		"# @name Multipart",
+		"POST http://localhost:8080/post HTTP/1.1",
+		"Content-Type: multipart/form-data; boundary=B",
+		"",
+		"--B",
+		"Content-Disposition: form-data; name=\"username\"",
+		"",
+		"alice",
+		"--B--",
+	}, "\n")
+	result, err := Analyze(strings.NewReader(src))
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	want := "--B\r\nContent-Disposition: form-data; name=\"username\"\r\n\r\nalice\r\n--B--"
+	if got := result.Blocks[0].Request.Body; got != want {
+		t.Errorf("body = %q, want %q", got, want)
+	}
+	// Idempotent: a file already saved with CRLF line endings comes out the same.
+	result, err = Analyze(strings.NewReader(strings.ReplaceAll(src, "\n", "\r\n")))
+	if err != nil {
+		t.Fatalf("Analyze (CRLF source): %v", err)
+	}
+	if got := result.Blocks[0].Request.Body; got != want {
+		t.Errorf("body from CRLF source = %q, want %q", got, want)
+	}
+}
+
+func TestResolveNonMultipartBodyKeepsLF(t *testing.T) {
+	src := "###\n# @name JSON\nPOST http://localhost:8080/post HTTP/1.1\nContent-Type: application/json\n\n{\n  \"a\": 1\n}\n"
+	result, err := Analyze(strings.NewReader(src))
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	if got, want := result.Blocks[0].Request.Body, "{\n  \"a\": 1\n}"; got != want {
+		t.Errorf("body = %q, want %q (LF untouched outside multipart)", got, want)
+	}
+}
+
+func TestResolveMultipartCRLFLeavesSplicedFileBytesAlone(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "data.bin")
+	fileBytes := "line1\nline2\n\x00\xff"
+	if err := os.WriteFile(path, []byte(fileBytes), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	src := strings.Join([]string{
+		"###",
+		"# @name Upload",
+		"POST http://localhost:8080/post HTTP/1.1",
+		"Content-Type: multipart/form-data; boundary=B",
+		"",
+		"--B",
+		"Content-Disposition: form-data; name=\"f\"; filename=\"data.bin\"",
+		"",
+		"< " + path,
+		"--B--",
+	}, "\n")
+	result, err := Analyze(strings.NewReader(src))
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	want := "--B\r\nContent-Disposition: form-data; name=\"f\"; filename=\"data.bin\"\r\n\r\n" + fileBytes + "\r\n--B--"
+	if got := result.Blocks[0].Request.Body; got != want {
+		t.Errorf("body = %q, want %q", got, want)
 	}
 }

@@ -232,6 +232,16 @@ Content-Type: image/png
 --WebAppBoundary--
 ```
 
+### Multipart line endings
+
+A body whose `Content-Type` is any `multipart/*` type is sent with CRLF
+(`\r\n`) line endings regardless of how the `.http` file is saved, as
+RFC 2046 requires between parts and part headers — lenient servers
+accept bare LF, strict ones reject it, so httpfly normalizes the same way
+JetBrains HTTP Client and `curl -F` do. Bytes spliced in from a `< path`
+reference are never touched. Every other body is sent byte-for-byte as
+written.
+
 A relative path resolves against the current working directory — same
 rule as everything else httpfly reads from disk (see
 [Environments](environments.md)), not the `.http` file's own directory.
