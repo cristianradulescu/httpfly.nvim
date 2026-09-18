@@ -149,7 +149,7 @@ function M.render(decoded, cmd_str)
       end
 
       if req.script_error then
-        table.insert(out, string.format("⚠️ **post-request script error:** %s", tostring(req.script_error)))
+        table.insert(out, string.format("⚠️ **script error:** %s", tostring(req.script_error)))
         table.insert(out, "")
       end
     end

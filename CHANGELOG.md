@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- httpfly's stderr is now shown in the result buffer as its own
+  `stderr` section whenever it's non-empty, even on a successful run —
+  since httpfly's post-v0.3.1 change a script's `print(...)` writes there (never to
+  stdout, which stays pure JSON), so this is where script debugging
+  output lands. Previously stderr was only shown on a non-zero exit.
+
+### Changed
+
+- A post-request script error is now labelled `script error:` instead of
+  `post-request script error:` in both renderers — httpfly's own
+  `script_error` text already starts with `post-request script:`, so the
+  old label read as a doubled prefix.
+- Requires an httpfly newer than v0.3.1 for the stderr behavior above; on
+  older versions script `print` output still lands in stdout ahead of
+  the JSON (tolerated by `extract_json` as long as it contains no `[`).
+  That same httpfly change also rejects a file that reuses one `@name` on two
+  blocks; `:HttpSend` on such a file shows httpfly's own error in the
+  result buffer rather than silently sending the first block.
+
 ## [0.3.0] - 2026-10-15
 
 ### Added

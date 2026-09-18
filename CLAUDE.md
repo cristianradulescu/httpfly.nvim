@@ -198,7 +198,10 @@ Request flow, end to end:
 4. `lua/httpfly/format.lua` is a thin dispatcher: it decodes the JSON
    payload (`format/shared.lua`'s `extract_json`, defensive against any
    stray non-JSON text before the `[` — relevant if `cmd` is ever invoked
-   through something that prints notices to stdout first). httpfly's
+   through something that prints notices to stdout first; httpfly itself
+   keeps `-json` stdout clean — since its post-v0.3.1 change a script's `print(...)` and
+   flag errors go to stderr, which `runner.lua`'s `append_stderr()` shows
+   as its own section even on a successful run). httpfly's
    `-json` output is a **top-level array** (not `{summary, requests}` the
    way the previous httpyac backend's was) — `format.lua` just checks the
    decoded value is a table before handing it to a renderer picked by

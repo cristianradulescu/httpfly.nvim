@@ -97,6 +97,29 @@ local function present(buf, cwd, cmd_str, lines, truncations, highlights, raw_fa
   end
 end
 
+-- appends httpfly's stderr to already-rendered `lines`, if there is any.
+-- Since httpfly's post-v0.3.1 change a script's print(...) writes to stderr (never
+-- stdout, which stays pure JSON), so this is where a script's debugging
+-- output shows up -- it must be shown even on a successful (exit 0) run,
+-- unlike the raw fallback below, which only shows stderr on failure
+local function append_stderr(lines, stderr)
+  if not lines or not stderr or stderr == "" then
+    return
+  end
+  local chunk = vim.split(stderr:gsub("\n+$", ""), "\n")
+  if config.options.output_style == "unicode" then
+    table.insert(lines, "stderr")
+    vim.list_extend(lines, chunk)
+  else
+    table.insert(lines, "**stderr**")
+    table.insert(lines, "")
+    table.insert(lines, "```")
+    vim.list_extend(lines, chunk)
+    table.insert(lines, "```")
+  end
+  table.insert(lines, "")
+end
+
 local function raw_fallback_lines(cmd_str, stdout, stderr, code)
   local lines = { "Command: " .. cmd_str, "" }
   if stdout and #stdout > 0 then
@@ -126,7 +149,16 @@ local function run(cmd, cwd)
       if res.stdout then
         lines, truncations, highlights = format.render(res.stdout, cmd_str)
       end
-      present(buf, cwd, cmd_str, lines, truncations, highlights, raw_fallback_lines(cmd_str, res.stdout, res.stderr, res.code))
+      append_stderr(lines, res.stderr)
+      present(
+        buf,
+        cwd,
+        cmd_str,
+        lines,
+        truncations,
+        highlights,
+        raw_fallback_lines(cmd_str, res.stdout, res.stderr, res.code)
+      )
     end)
   end)
 end
@@ -156,6 +188,7 @@ local function run_many(cmds, cwd)
 
   local combined = {}
   local raw_chunks = {}
+  local stderr_chunks = {}
   local last_stderr, last_code
 
   local step
@@ -165,6 +198,7 @@ local function run_many(cmds, cwd)
       if #combined > 0 then
         lines, truncations, highlights = format.render_decoded(combined, combined_cmd_str)
       end
+      append_stderr(lines, table.concat(stderr_chunks, ""))
       local fallback = { "Command:", "" }
       vim.list_extend(fallback, vim.split(combined_cmd_str, "\n"))
       table.insert(fallback, "")
@@ -185,6 +219,9 @@ local function run_many(cmds, cwd)
         local stdout = res.stdout or ""
         vim.list_extend(raw_chunks, vim.split(stdout, "\n"))
         last_stderr, last_code = res.stderr, res.code
+        if res.stderr and res.stderr ~= "" then
+          table.insert(stderr_chunks, res.stderr)
+        end
         local ok, decoded = pcall(vim.json.decode, shared.extract_json(stdout))
         if ok and type(decoded) == "table" then
           for _, item in ipairs(decoded) do

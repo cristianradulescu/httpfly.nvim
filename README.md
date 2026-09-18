@@ -45,9 +45,12 @@ response body for its own sake, and downloading a response to disk via
 ## Requirements
 
 - Neovim 0.10+
-- [httpfly](https://github.com/cristianradulescu/httpfly) v0.3.0+ on your
-  `$PATH` (this plugin assumes httpfly's `http-client.env.json` env-file
-  format, introduced in v0.3.0 — an older httpfly won't work with it):
+- [httpfly](https://github.com/cristianradulescu/httpfly) newer than
+  v0.3.1 on your `$PATH` (this plugin assumes httpfly's
+  `http-client.env.json` env-file format, introduced in v0.3.0, and its
+  post-v0.3.1 behavior of keeping `-json` stdout clean by sending script
+  `print(...)` output to stderr — an older httpfly won't work correctly
+  with it):
   ```sh
   go install github.com/cristianradulescu/httpfly/cmd/httpfly@latest
   ```

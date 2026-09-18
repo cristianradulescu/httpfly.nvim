@@ -264,7 +264,7 @@ function M.render(decoded, cmd_str)
       end
 
       if req.script_error then
-        table.insert(out, "  ⚠ post-request script error: " .. tostring(req.script_error))
+        table.insert(out, "  ⚠ script error: " .. tostring(req.script_error))
         hl_line(highlights, out, "DiagnosticWarn")
         table.insert(out, "")
       end
