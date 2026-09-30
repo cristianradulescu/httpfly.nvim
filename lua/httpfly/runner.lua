@@ -288,7 +288,8 @@ end
 -- an explicit "# @name" line later in the same block (still mandatory if
 -- the separator line carries no name) overrides it, matching httpfly's own
 -- rule that the two must agree when both are present. For each block, this
--- also pulls out its request line's URL (for a download filename guess),
+-- also pulls out its request line's URL, including any indented
+-- continuation lines (for a download filename guess),
 -- and an "# @download" / "# @download some-name.ext" annotation if
 -- present -- this plugin's own way of marking a request's response for
 -- saving, since httpfly itself has no per-request annotation for that (its
@@ -323,6 +324,16 @@ local function parse_blocks(bufnr)
         if not url then
           local u = l:match("^%u+%s+(%S+)%s+HTTP/[%d%.]+%s*$") or l:match("^%u+%s+(%S+)%s*$")
           if u then
+            -- Indented "/...", "?..." and "&..." lines right after the
+            -- request line continue its URL (same rule as the backend's
+            -- isURLContinuation); a PROTO may trail the last one.
+            for j = i + 1, end_line do
+              local cont = lines[j]:match("^%s+([/?&]%S*)")
+              if not cont then
+                break
+              end
+              u = u .. cont
+            end
             url = u
           end
         end

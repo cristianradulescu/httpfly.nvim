@@ -29,7 +29,8 @@ A block is, in order:
 2. Exactly one request line: `METHOD URL` or `METHOD URL PROTO`. `PROTO`
    defaults to `HTTP/1.1` if omitted. The URL **must be absolute**
    (`scheme://host[:port]/path`). No scheme is guessed and no `Host`
-   header is spliced in, so write the whole URL.
+   header is spliced in, so write the whole URL. A long URL can be
+   [split across several lines](#multiline-urls).
 3. Zero or more header lines: `Name: Value`.
 4. An optional blank line, then everything else in the block is the request
    body verbatim (leading/trailing blank lines trimmed; blank lines and
@@ -50,6 +51,31 @@ Trailing text on the separator line itself is shorthand for that block's
 `# @name GetUsers`. An explicit `# @name` line later in the same block is
 fine as long as it matches; if it names something *different*, that's an
 error (`metadata:name`) rather than one silently overwriting the other.
+
+### Multiline URLs
+
+A long URL can be broken up after the request line: every following line
+that is **indented** and starts with `/` (a path segment), `?` (the query
+string) or `&` (another query parameter) is appended to the URL, with its
+surrounding whitespace removed. `PROTO` can go on the first line or after
+the last continuation line:
+
+```http
+### Search
+GET http://localhost:8080
+    /anything
+    /search
+    ?q={{query}}
+    &page=2
+    &sort=desc HTTP/1.1
+Accept: application/json
+```
+
+is sent as `GET http://localhost:8080/anything/search?q=...&page=2&sort=desc`.
+Continuation lines must come right after the request line, before any
+header; the indentation plus the leading `/`, `?` or `&` is what tells them
+apart from a header or the body. This only applies to the URL — a body is
+always sent exactly as written.
 
 ## Metadata
 

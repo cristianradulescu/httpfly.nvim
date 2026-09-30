@@ -30,3 +30,12 @@ Content-Type: application/json
 ### Name in separator
 GET http://localhost:8080/get?greeting=hello-again HTTP/1.1
 Accept: application/json
+
+### MultilineURL
+# A long URL can be split: indented lines starting with "/", "?" or "&"
+# right after the request line are appended to the URL.
+GET http://localhost:8080
+    /anything
+    ?greeting=hello
+    &name=John HTTP/1.1
+Accept: application/json

@@ -57,6 +57,17 @@ func TestParseBasicExample(t *testing.T) {
 			RawURL:     "http://localhost:8080/get?greeting=hello-again",
 			RawHeaders: []httpfile.Header{{Name: "Accept", Value: "application/json"}},
 		},
+		{
+			Name:       "MultilineURL",
+			Method:     "GET",
+			URL:        "http://localhost:8080/anything?greeting=hello&name=John",
+			Proto:      "HTTP/1.1",
+			Headers:    []httpfile.Header{{Name: "Accept", Value: "application/json"}},
+			Lang:       "lua",
+			Variables:  map[string]string{},
+			RawURL:     "http://localhost:8080/anything?greeting=hello&name=John",
+			RawHeaders: []httpfile.Header{{Name: "Accept", Value: "application/json"}},
+		},
 	}
 
 	if len(got.Requests) != len(want) {

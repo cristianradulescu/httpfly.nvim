@@ -562,3 +562,82 @@ func TestAnalyzeMetadataAmongHeadersErrors(t *testing.T) {
 		t.Errorf("name = %q, want it not to be picked up from after the request line", result.Blocks[0].Request.Name)
 	}
 }
+
+func TestAnalyzeMultilineRequestLine(t *testing.T) {
+	tests := []struct {
+		name      string
+		src       string
+		wantURL   string
+		wantProto string
+	}{
+		{
+			name:      "path and query continuations",
+			src:       "### Get\nGET http://localhost:8080\n    /api\n    /items\n    ?id=1\n    &name={{name}}\nAccept: application/json\n",
+			wantURL:   "http://localhost:8080/api/items?id=1&name=bob",
+			wantProto: "HTTP/1.1",
+		},
+		{
+			name:      "proto on the first line",
+			src:       "### Get\nGET http://localhost:8080/get HTTP/2\n\t?id=1\n\t&page=2\n",
+			wantURL:   "http://localhost:8080/get?id=1&page=2",
+			wantProto: "HTTP/2",
+		},
+		{
+			name:      "proto after the last continuation",
+			src:       "### Get\r\nGET http://localhost:8080/get\r\n  ?id=1\r\n  &page=2 HTTP/2\r\n",
+			wantURL:   "http://localhost:8080/get?id=1&page=2",
+			wantProto: "HTTP/2",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := AnalyzeWithEnv(strings.NewReader(tt.src), map[string]string{"name": "bob"})
+			if err != nil {
+				t.Fatalf("Analyze: %v", err)
+			}
+			if result.HasErrors() {
+				t.Fatalf("HasErrors() = true: %+v", result.Blocks[0].Issues)
+			}
+			req := result.Blocks[0].Request
+			if req.URL != tt.wantURL {
+				t.Errorf("URL = %q, want %q", req.URL, tt.wantURL)
+			}
+			if req.Proto != tt.wantProto {
+				t.Errorf("Proto = %q, want %q", req.Proto, tt.wantProto)
+			}
+		})
+	}
+}
+
+func TestAnalyzeMultilineRequestLineKeepsHeadersAndBody(t *testing.T) {
+	src := "### Post\nPOST http://localhost:8080/post\n    ?id=1\nContent-Type: text/plain\n\n  /not/a/continuation\n"
+	result, err := Analyze(strings.NewReader(src))
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	req := result.Blocks[0].Request
+	if got, want := req.URL, "http://localhost:8080/post?id=1"; got != want {
+		t.Errorf("URL = %q, want %q", got, want)
+	}
+	if len(req.Headers) != 1 || req.Headers[0].Name != "Content-Type" {
+		t.Errorf("Headers = %+v, want just Content-Type", req.Headers)
+	}
+	if got, want := req.Body, "  /not/a/continuation"; got != want {
+		t.Errorf("Body = %q, want %q", got, want)
+	}
+}
+
+func TestAnalyzeIndentedHeaderIsNotAURLContinuation(t *testing.T) {
+	src := "### Get\nGET http://localhost:8080/get\n  Accept: application/json\n"
+	result, err := Analyze(strings.NewReader(src))
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	req := result.Blocks[0].Request
+	if got, want := req.URL, "http://localhost:8080/get"; got != want {
+		t.Errorf("URL = %q, want %q", got, want)
+	}
+	if len(req.Headers) != 1 || req.Headers[0].Name != "Accept" {
+		t.Errorf("Headers = %+v, want Accept", req.Headers)
+	}
+}

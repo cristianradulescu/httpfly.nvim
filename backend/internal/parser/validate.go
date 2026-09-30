@@ -392,10 +392,17 @@ func validateBlock(lines []string, globalVars, globalMetadata map[string]string)
 		return req, issues, true
 	}
 
+	i++
+	var continuations []string
+	for i < len(lines) && isURLContinuation(lines[i]) {
+		continuations = append(continuations, strings.TrimSpace(lines[i]))
+		i++
+	}
+	line = joinRequestLine(line, continuations)
+
 	method, rawURL, proto, lineIssues := parseRequestLine(line)
 	req.Method, req.RawURL, req.Proto = method, rawURL, proto
 	issues = append(issues, lineIssues...)
-	i++
 
 	for i < len(lines) {
 		line := strings.TrimSpace(lines[i])
@@ -657,6 +664,39 @@ func validateMetadata(key, value string) []Issue {
 			Message:  fmt.Sprintf("unknown metadata \"@%s\"", key),
 		}}
 	}
+}
+
+// isURLContinuation reports whether a line right after the request line
+// continues its URL, JetBrains HTTP Client style: indented, and starting
+// with "/" (a path segment), "?" (the query string) or "&" (another query
+// parameter). The leading character is what keeps this unambiguous -- an
+// indented header line can't start with any of them.
+func isURLContinuation(raw string) bool {
+	if raw == "" || (raw[0] != ' ' && raw[0] != '\t') {
+		return false
+	}
+	line := strings.TrimSpace(raw)
+	return line != "" && strings.ContainsRune("/?&", rune(line[0]))
+}
+
+// joinRequestLine folds URL continuation lines (already trimmed) back into
+// the request line, concatenated onto the URL with nothing in between. A
+// PROTO on the first line stays at the end; it can also be written after
+// the last continuation instead ("&page=2 HTTP/1.1"). Anything that isn't
+// "METHOD URL [PROTO]" is returned as-is, for parseRequestLine to report.
+func joinRequestLine(line string, continuations []string) string {
+	if len(continuations) == 0 {
+		return line
+	}
+	fields := strings.Fields(line)
+	if len(fields) < 2 || len(fields) > 3 {
+		return line
+	}
+	joined := fields[0] + " " + fields[1] + strings.Join(continuations, "")
+	if len(fields) == 3 {
+		joined += " " + fields[2]
+	}
+	return joined
 }
 
 // parseRequestLine performs structural parsing of a request line only --

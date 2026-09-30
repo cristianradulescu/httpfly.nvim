@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Multiline URLs: indented lines starting with `/`, `?` or `&` right after
+  the request line are appended to its URL, JetBrains HTTP Client style,
+  so a long URL can be split one path segment or query parameter per line.
+
 ### Changed
 
 - The httpfly backend is now part of this repo (`backend/`) and is built
