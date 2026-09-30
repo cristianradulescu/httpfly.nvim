@@ -1,1 +1,8 @@
+# Backend binary built by `make build`
+/bin/
+*.test
+
+# Persisted client.global state, request history and downloads -- may
+# contain secrets like auth tokens.
+.httpfly/
 **/.httpfly/**

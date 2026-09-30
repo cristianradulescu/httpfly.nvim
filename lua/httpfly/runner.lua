@@ -1,3 +1,4 @@
+local backend = require("httpfly.backend")
 local config = require("httpfly.config")
 local env = require("httpfly.env")
 local format = require("httpfly.format")
@@ -232,7 +233,7 @@ local function run_many(cmds, cwd)
 end
 
 local function build_cmd(file, name_filter, download_path)
-  local cmd = { config.options.cmd, "run", "-json" }
+  local cmd = { backend.get_path(), "run", "-json" }
 
   local e = env.get(0)
   if e then
@@ -253,18 +254,12 @@ local function build_cmd(file, name_filter, download_path)
 end
 
 -- checked on every send rather than once at startup, so a `cmd` changed via
--- a live setup() call, or a binary installed mid-session, is picked up
--- immediately; vim.fn.executable() resolves both bare names (via $PATH) and
--- absolute/relative paths, matching how vim.system() itself would look it up
+-- a live setup() call, or a `make build` run mid-session, is picked up
+-- immediately
 local function ensure_binary()
-  if vim.fn.executable(config.options.cmd) == 0 then
-    vim.notify(
-      "httpfly: '"
-        .. config.options.cmd
-        .. "' not found. Install it (see https://github.com/cristianradulescu/httpfly) "
-        .. "or set `cmd` in httpfly.setup({ cmd = ... }) to its full path.",
-      vim.log.levels.ERROR
-    )
+  local path, err = backend.resolve()
+  if not path then
+    vim.notify("httpfly: " .. err, vim.log.levels.ERROR)
     return false
   end
   return true

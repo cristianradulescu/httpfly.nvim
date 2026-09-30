@@ -1,7 +1,9 @@
 # Getting Started
 
-This walks through writing and running your first `.http` file. See
-[Installation](installation.md) first if you haven't built httpfly yet.
+This walks through writing and running your first `.http` file directly
+with the `httpfly` binary the plugin uses under the hood — useful when
+working on the backend itself. Build it first with `make build` at the
+httpfly.nvim repo root, which produces `bin/httpfly`.
 
 ## 1. Write a request
 

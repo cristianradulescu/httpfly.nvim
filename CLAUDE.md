@@ -5,7 +5,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 `httpfly.nvim` is a Neovim plugin that provides a thin UI layer over the
-[httpfly](https://github.com/cristianradulescu/httpfly) CLI for executing
+httpfly CLI — its own Go backend, bundled in this repo under `backend/` —
+for executing
 JetBrains-style `.http` files (`###` request separators, `{{variables}}`,
 `< {% ... %}`/`> {% ... %}` Lua pre/post-request scripts,
 `http-client.env.json` environments). httpfly does all the heavy lifting — sending requests,
@@ -15,9 +16,29 @@ is: discover/select the environment, shell out to `httpfly run -json`, and
 turn its JSON output into a colored, box-drawn result pane in a split,
 with a floating-window preview for values too long to fit in a table cell.
 
-There is no build step and no test suite — this is a small, dependency-free
-Lua plugin. Verification is done by exercising modules directly through
-`nvim --headless` (see "Manual verification" below).
+## Repo layout
+
+- Lua plugin at the repo root (`lua/`, `plugin/`, `ftdetect/`,
+  `ftplugin/`) — must stay at the root for plugin managers to load it.
+- `backend/` — the httpfly Go module (`backend/go.mod`, module path
+  `github.com/cristianradulescu/httpfly`, kept from when it was a
+  standalone repo; nothing `go get`s it). It has its own
+  `backend/CLAUDE.md` covering its internals — read that before changing
+  Go code. Its user docs (`.http` format, environments, scripting, `-json`
+  contract) and runnable examples live in `backend/doc/`.
+- Root `Makefile` covers both halves: `make build` compiles
+  `backend/cmd/httpfly` into `bin/httpfly` (gitignored), injecting the
+  plugin's own `git describe --tags` as the version; `make check` runs
+  the gofmt check, `go vet`, `go test` and `stylua --check`. Run `make
+  check` before considering work done.
+- One version for the whole repo: the plugin's `vX.Y.Z` tags. The
+  backend's former standalone releases are frozen in
+  `backend/CHANGELOG.md`; new changes on either side go in the root
+  `CHANGELOG.md`.
+
+The Lua side has no test suite and no dependencies; it's verified by
+exercising modules directly through `nvim --headless` (see "Manual
+verification" below). The backend has a normal `go test` suite.
 
 Any user-visible change (new command, changed default, changed resolution
 behavior, etc.) must get an entry under `## [Unreleased]` in `CHANGELOG.md`
@@ -26,10 +47,17 @@ behavior, etc.) must get an entry under `## [Unreleased]` in `CHANGELOG.md`
 
 ## Runtime dependency
 
-The plugin assumes `httpfly` is installed and on `$PATH` (`go install
-github.com/cristianradulescu/httpfly/cmd/httpfly@latest`, or build it from
-source — see httpfly's own `doc/installation.md`). The binary name is
-configurable via `require("httpfly").setup({ cmd = ... })`.
+The plugin runs the bundled `bin/httpfly`, built by `make build` (users
+put `build = "make build"` in their lazy.nvim spec). `lua/httpfly/backend.lua`'s
+`get_path()` resolves it: `config.options.cmd` if set (an override, e.g. a
+dev build), else `vim.api.nvim_get_runtime_file("bin/httpfly", false)[1]`
+— i.e. the plugin's own directory, wherever it's installed. `resolve()`
+additionally checks it's executable; `runner.lua`'s `ensure_binary()` and
+`lua/httpfly/health.lua` (`:checkhealth httpfly`) both use it and point
+the user at `make build` when it's missing. Because the plugin and backend
+ship together, there's no version-compatibility checking between them —
+change the `-json` output (`backend/internal/cli/json.go`) and the Lua
+renderers (`lua/httpfly/format/`) together, in the same commit.
 
 httpfly resolves `http-client.env.json` (plus an optional sibling
 `http-client.private.env.json` overlay, for values that shouldn't be
@@ -279,7 +307,8 @@ download keymap/command — `# @download` is picked up automatically by
 
 ## Manual verification
 
-There's no automated test runner. To check changes, exercise the relevant
+`make check` covers the backend and Lua formatting; there's no automated
+test runner for the Lua side. To check changes, exercise the relevant
 module directly through headless Neovim, e.g.:
 
 ```bash
@@ -304,11 +333,14 @@ nvim --headless -u NONE -c "filetype plugin on" -c "set rtp+=." \
 ```
 
 To see httpfly's actual JSON shape (useful when extending `format.lua`),
-run `httpfly run -json <file>` directly and inspect the top-level array's
-`request`/`response`/`error`/`script_error` fields (see httpfly's own
-`doc/usage.md#-json`).
+run `bin/httpfly run -json <file>` directly (e.g. against
+`backend/doc/examples/*.http` with `make httpbin-up`) and inspect the
+top-level array's `request`/`response`/`error`/`script_error` fields (see
+`backend/doc/usage.md#-json`).
 
 ## Style
 
-No `.stylua.toml` is checked in; `stylua` (available on this machine) can be
-run with its defaults. Files consistently use 2-space indentation.
+Lua: `.stylua.toml` is checked in; `make format` checks and `make
+format-fix` applies it. Files consistently use 2-space indentation. Go:
+`gofmt` (`make fmt`), plus `golangci-lint` via `make lint` (config in
+`backend/.golangci.yml`).

@@ -7,30 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Removed
-
-- The markdown output style, and with it the `output_style` option — the
-  unicode (box-drawing, directly highlighted) style is now the only one.
-  The result buffer is always `filetype = "text"` and history files always
-  get `.txt`. Drop `output_style` from your `setup({})` call.
-- `:HttpEnvVars` no longer renders its popup as markdown either: it's now
-  a plain-text list in the same box-drawn style as the result pane (a
-  ruled title, each variable name highlighted with its value on the
-  indented line below, wrapping as before), `filetype = "text"`.
-
-### Added
-
-- New `timeout` option (e.g. `timeout = "2m"`), passed through as
-  httpfly's `run -timeout`, for requests or downloads that need longer
-  than httpfly's 30s default. Requires an httpfly newer than v0.3.1.
-- httpfly's stderr is now shown in the result buffer as its own
-  `stderr` section whenever it's non-empty, even on a successful run —
-  since httpfly's post-v0.3.1 change a script's `print(...)` writes there (never to
-  stdout, which stays pure JSON), so this is where script debugging
-  output lands. Previously stderr was only shown on a non-zero exit.
-
 ### Changed
 
+- **httpfly is now bundled.** The Go backend (formerly the standalone
+  [`cristianradulescu/httpfly`](https://github.com/cristianradulescu/httpfly)
+  repo, merged here with its full history under `backend/`) is built as
+  part of installing the plugin: add `build = "make build"` to your
+  lazy.nvim spec (or run `make build` in the plugin directory with other
+  plugin managers). This needs Go 1.26+ and `make`; a separately
+  installed `httpfly` on `$PATH` is no longer needed or used.
+- `cmd` now defaults to `nil`, meaning the bundled `bin/httpfly`. Setting
+  it still overrides the binary (e.g. to a development build). If you
+  had `cmd = "httpfly"` in your `setup({})`, remove it to use the bundled
+  backend.
+- The "requires an httpfly newer than v0.3.1" notes in this release no
+  longer apply: the bundled backend always matches the plugin. The backend
+  changes that ship with it (e.g. `{{$uuid}}` and other dynamic
+  variables, variables referencing other variables, `#` comments among
+  headers) are listed under `[Unreleased]` in `backend/CHANGELOG.md`.
 - A post-request script error is now labelled `script error:` instead of
   `post-request script error:` in both renderers — httpfly's own
   `script_error` text already starts with `post-request script:`, so the
@@ -48,6 +42,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   trailing `^M` on every line in the result buffer — relevant since
   httpfly (newer than v0.3.1) sends `multipart/*` request bodies with CRLF and
   reports them that way in `-json`'s `request.body`.
+
+### Removed
+
+- The markdown output style, and with it the `output_style` option — the
+  unicode (box-drawing, directly highlighted) style is now the only one.
+  The result buffer is always `filetype = "text"` and history files always
+  get `.txt`. Drop `output_style` from your `setup({})` call.
+- `:HttpEnvVars` no longer renders its popup as markdown either: it's now
+  a plain-text list in the same box-drawn style as the result pane (a
+  ruled title, each variable name highlighted with its value on the
+  indented line below, wrapping as before), `filetype = "text"`.
+
+### Added
+
+- `:checkhealth httpfly`: reports whether the backend binary is built,
+  its version, and whether `go` is available to (re)build it.
+- New `timeout` option (e.g. `timeout = "2m"`), passed through as
+  httpfly's `run -timeout`, for requests or downloads that need longer
+  than httpfly's 30s default. Requires an httpfly newer than v0.3.1.
+- httpfly's stderr is now shown in the result buffer as its own
+  `stderr` section whenever it's non-empty, even on a successful run —
+  since httpfly's post-v0.3.1 change a script's `print(...)` writes there (never to
+  stdout, which stays pure JSON), so this is where script debugging
+  output lands. Previously stderr was only shown on a non-zero exit.
 
 ## [0.3.0] - 2026-10-15
 

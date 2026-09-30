@@ -1,21 +1,22 @@
 # httpfly.nvim
 
-Send `.http` requests from Neovim using
-[httpfly](https://github.com/cristianradulescu/httpfly) and view the
-response in a colored, box-drawn result pane.
+Send `.http` requests from Neovim and view the response in a colored,
+box-drawn result pane. Requests are executed by httpfly, a small Go
+backend bundled in this repo under [`backend/`](backend/) and built as
+part of installing the plugin.
 
 ![httpfly.nvim showing a request file next to the rendered response](screenshot.png)
 
-> **New here?** Check out httpfly's own
-> [`doc/examples/`](https://github.com/cristianradulescu/httpfly/tree/main/doc/examples)
+> **New here?** Check out
+> [`backend/doc/examples/`](backend/doc/examples/)
 > for runnable `.http` files covering everything below, from basic requests
 > to scripting.
 
 ## Scope
 
-This plugin does **not** implement request execution, variables, or
-scripting itself — [httpfly](https://github.com/cristianradulescu/httpfly)
-does that. This plugin just wires it into Neovim:
+The Lua side of this plugin does **not** implement request execution,
+variables, or scripting itself — the bundled httpfly backend does that.
+The Lua side just wires it into Neovim:
 
 - discovers/selects the httpfly environment (`http-client.env.json`, plus
   an optional `http-client.private.env.json` overlay) for the current file
@@ -31,11 +32,13 @@ does that. This plugin just wires it into Neovim:
 If you need JetBrains HTTP Client-style syntax (`###` separators,
 `{{variables}}`, `< {% ... %}`/`> {% ... %}` Lua pre/post-request scripts,
 `http-client.env.json` environments), that comes from httpfly — this
-plugin doesn't reimplement or restrict any of it.
+plugin doesn't reimplement or restrict any of it. The full syntax is
+documented in [`backend/doc/`](backend/doc/):
+[.http file format](backend/doc/http-file-format.md),
+[environments](backend/doc/environments.md) and
+[scripting](backend/doc/scripting.md).
 
-See httpfly's own
-[`doc/examples/`](https://github.com/cristianradulescu/httpfly/tree/main/doc/examples)
-for runnable `.http` files covering plain GET/POST, pre-/post-request
+See [`backend/doc/examples/`](backend/doc/examples/) for runnable `.http` files covering plain GET/POST, pre-/post-request
 scripting (including a login → token → authenticated-request chain),
 environments, shelling out to a script for auth tokens, forms
 (`application/x-www-form-urlencoded` and `multipart/form-data`), saving a
@@ -45,16 +48,9 @@ response body for its own sake, and downloading a response to disk via
 ## Requirements
 
 - Neovim 0.10+
-- [httpfly](https://github.com/cristianradulescu/httpfly) newer than
-  v0.3.1 on your `$PATH` (this plugin assumes httpfly's
-  `http-client.env.json` env-file format, introduced in v0.3.0, and its
-  post-v0.3.1 behavior of keeping `-json` stdout clean by sending script
-  `print(...)` output to stderr — an older httpfly won't work correctly
-  with it):
-  ```sh
-  go install github.com/cristianradulescu/httpfly/cmd/httpfly@latest
-  ```
-  (or build it from source — see httpfly's own `doc/installation.md`)
+- Go 1.26+ and `make`, to build the bundled httpfly backend
+  (`make build` compiles it into the plugin's own `bin/httpfly`; nothing
+  is installed on your `$PATH`)
 
 ## Setup
 
@@ -64,16 +60,23 @@ With [lazy.nvim](https://github.com/folke/lazy.nvim):
 {
   "cristianradulescu/httpfly.nvim",
   ft = "http",
+  build = "make build",
   opts = {},
 }
 ```
+
+`build = "make build"` rebuilds the backend on every install and update,
+so it always matches the plugin's Lua side. With another plugin manager,
+run `make build` in the plugin's directory after installing or updating.
+`:checkhealth httpfly` reports whether the binary is built and which
+version it is.
 
 Calling `require("httpfly").setup({})` (or passing `opts = {}` above) isn't
 required — all options have defaults — but it's the way to override them:
 
 ```lua
 require("httpfly").setup({
-  cmd = "httpfly",                             -- httpfly binary/command to run
+  cmd = nil,                                   -- httpfly binary to run; nil = the bundled bin/httpfly
   env_file = "http-client.env.json",           -- environment file name to look for
   private_env_file = "http-client.private.env.json", -- optional overlay, alongside env_file
   keymaps = true,                              -- set the default <leader>h* keymaps below
@@ -193,8 +196,8 @@ file (e.g. once a token expires).
 `# @download` on a request saves its response body to disk, byte-perfect —
 for any response, not just binary content (an image, a PDF, a JSON body,
 plain text, ...). It's just as reliable as scripting `response.body`
-yourself (see "Scripting notes" below, and httpfly's own
-`6_save_response.http` example — Lua strings are byte arrays, so nothing is
+yourself (see "Scripting notes" below, and the
+[`7_save_response.http`](backend/doc/examples/7_save_response.http) example — Lua strings are byte arrays, so nothing is
 lost either way, even for binary content); the advantage of `# @download`
 is convenience — no script to
 write, and it works the same from `:HttpSend` or `:HttpSendAll`. This is
@@ -239,7 +242,7 @@ be used only within the current request has to go through it.
 Every successfully rendered response is also saved to `.httpfly/history/`
 next to the `.http` file's own directory (the same directory httpfly's own
 `.httpfly/state.json` lives in), named by timestamp
-(`YYYYMMDD-HHMMSS-microseconds.md`).
+(`YYYYMMDD-HHMMSS-microseconds.txt`).
 
 ### Gitignore
 
@@ -250,3 +253,19 @@ directory next to your env file, so ignoring the whole thing covers both
 ```
 .httpfly/
 ```
+
+## Development
+
+The repo holds both halves of the plugin: the Lua UI (`lua/`, `plugin/`,
+`ftdetect/`, `ftplugin/`) and the Go backend (`backend/`, its own Go
+module). The root `Makefile` covers both:
+
+```sh
+make build        # compile backend → bin/httpfly
+make check        # gofmt check, go vet, go test, stylua --check
+make httpbin-up   # local httpbin on :8080 for backend/doc/examples/*.http
+make httpbin-down
+```
+
+The backend's `-json` output is the contract with the Lua renderers
+(`lua/httpfly/format/`); see [`backend/doc/usage.md`](backend/doc/usage.md#-json).

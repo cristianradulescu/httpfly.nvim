@@ -1,7 +1,0 @@
-/bin/
-/httpfly
-*.test
-
-# Persisted client.global state written by scripts (internal/state) -- may
-# contain secrets like auth tokens.
-.httpfly/

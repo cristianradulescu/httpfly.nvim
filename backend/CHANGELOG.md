@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+> **Frozen.** httpfly was merged into httpfly.nvim as its bundled backend
+> after v0.3.1 and is no longer released on its own. The `[Unreleased]`
+> entries below first ship as part of httpfly.nvim; new backend changes
+> are recorded in the repo root's `CHANGELOG.md`. The `vX.Y.Z` versions
+> below refer to the former standalone `cristianradulescu/httpfly` repo.
+
 ## [Unreleased]
 
 ### Added

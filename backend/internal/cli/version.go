@@ -6,12 +6,12 @@ import (
 )
 
 // Version is httpfly's version. It defaults to "dev" for local builds (go
-// run, go build without flags) and is overridden at release-build time via:
+// run, go build without flags) and is overridden by the httpfly.nvim
+// repo's root Makefile (`make build`) with the plugin's own git tag via:
 //
 //	go build -ldflags "-X github.com/cristianradulescu/httpfly/internal/cli.Version=X.Y.Z"
 //
-// (see the Makefile's build target). Callers that display a version should
-// use EffectiveVersion instead, which also covers "go install".
+// Callers that display a version should use EffectiveVersion instead.
 var Version = "dev"
 
 // EffectiveVersion returns Version if it was set via the ldflags above, or
@@ -22,9 +22,7 @@ var Version = "dev"
 // never runs the Makefile and so never sets Version -- would always report
 // "dev" even for a tagged release. The module version's leading "v" (e.g.
 // "v0.3.0") is stripped so it matches the unprefixed X.Y.Z the Makefile's
-// build produces, from the VERSION file -- and the tags this project's
-// releases use are themselves "vX.Y.Z", so this is the same string either
-// way.
+// build produces from the plugin's "vX.Y.Z" git tags.
 func EffectiveVersion() string {
 	if Version != "dev" {
 		return Version
