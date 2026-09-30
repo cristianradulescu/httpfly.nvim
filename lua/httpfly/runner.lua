@@ -253,9 +253,8 @@ local function build_cmd(file, name_filter, download_path)
   return cmd
 end
 
--- checked on every send rather than once at startup, so a `cmd` changed via
--- a live setup() call, or a `make build` run mid-session, is picked up
--- immediately
+-- checked on every send rather than once at startup, so a `make build`
+-- run mid-session is picked up immediately
 local function ensure_binary()
   local path, err = backend.resolve()
   if not path then

@@ -13,8 +13,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   when the plugin is installed: add `build = "make build"` to your
   lazy.nvim spec, or run `make build` in the plugin directory. Requires
   Go 1.26+ and `make`. A separately installed `httpfly` is no longer used.
-- `cmd` now defaults to `nil`, meaning the bundled `bin/httpfly`. Remove
-  `cmd = "httpfly"` from your `setup({})` if you had it.
 - `client.global:get(name)` returns `nil` for a variable that was never
   set, instead of `""`, so `client.global:get("token") or "default"`
   works.
@@ -48,6 +46,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- The `cmd` option. The bundled backend is always used; remove `cmd`
+  from your `setup({})` if you set it.
 - The markdown output style and the `output_style` option. Results and
   history files are always plain text (`.txt`). Remove `output_style`
   from your `setup({})`.

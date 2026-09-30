@@ -47,7 +47,6 @@ All options are optional. These are the defaults:
 
 ```lua
 require("httpfly").setup({
-  cmd = nil,                                         -- httpfly binary; nil = the bundled bin/httpfly
   env_file = "http-client.env.json",                 -- environment file name
   private_env_file = "http-client.private.env.json", -- private overlay, next to env_file
   keymaps = true,                                    -- set the <leader>h* keymaps below

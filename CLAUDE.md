@@ -45,10 +45,12 @@ into them. Keep user-facing detail in `docs/`, not here.
 ## Running the backend
 
 Users build it with `build = "make build"` in their lazy.nvim spec.
-`lua/httpfly/backend.lua`'s `get_path()` resolves the binary:
-`config.options.cmd` if set (an override, e.g. a dev build), else
+`lua/httpfly/backend.lua`'s `get_path()` resolves the binary as
 `vim.api.nvim_get_runtime_file("bin/httpfly", false)[1]` made absolute —
-i.e. the plugin's own directory, wherever it's installed. It must be
+i.e. the plugin's own directory, wherever it's installed. There's
+deliberately no option to point at a different binary: the Lua side and
+the backend must come from the same commit. To test a backend change,
+load the plugin from the checkout (lazy `dir = ...`) and `make build`. It must be
 absolute because httpfly runs with a different `cwd` (below). `resolve()`
 additionally checks it's executable; `runner.lua`'s `ensure_binary()` and
 `lua/httpfly/health.lua` (`:checkhealth httpfly`) use it and point the

@@ -2,7 +2,7 @@
 
 The plugin sends requests through `httpfly`, a Go program in
 [`backend/`](../backend/). `make build` compiles it into `bin/httpfly`,
-and the plugin runs that binary (or the path set in its `cmd` option).
+and the plugin runs that binary.
 This page covers how the plugin uses the backend and documents the
 backend's command line, for working on either side.
 

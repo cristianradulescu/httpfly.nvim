@@ -1,7 +1,6 @@
 local M = {}
 
 M.defaults = {
-  cmd = nil, -- path to the httpfly binary; nil = the bundled bin/httpfly built by `make build`
   env_file = "http-client.env.json",
   private_env_file = "http-client.private.env.json",
   keymaps = true,

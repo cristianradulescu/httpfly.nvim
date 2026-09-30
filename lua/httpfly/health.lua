@@ -1,5 +1,4 @@
 local backend = require("httpfly.backend")
-local config = require("httpfly.config")
 
 local M = {}
 
@@ -20,8 +19,7 @@ local function check_backend()
     health.error("httpfly at " .. path .. " did not run successfully", { vim.trim(res.stderr or "") })
     return
   end
-  local source = config.options.cmd and "`cmd` override" or "bundled"
-  health.ok(vim.trim(res.stdout or "") .. " (" .. source .. ": " .. path .. ")")
+  health.ok(vim.trim(res.stdout or "") .. " (" .. path .. ")")
 end
 
 local function check_go()
