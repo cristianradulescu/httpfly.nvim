@@ -33,6 +33,7 @@ local function open_result_buf()
     vim.api.nvim_win_set_buf(win, buf)
     vim.wo[win].number = false
     vim.wo[win].relativenumber = false
+    vim.wo[win].spell = false
     vim.keymap.set("n", config.options.preview_keymap, function()
       preview.show(buf)
     end, { buffer = buf, desc = "httpfly: show full value under cursor" })
