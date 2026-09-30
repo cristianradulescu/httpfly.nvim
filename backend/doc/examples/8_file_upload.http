@@ -1,0 +1,35 @@
+# Sending a file's exact bytes as the body -- a "< path" line (JetBrains
+# HTTP Client's own convention) is replaced with that file's raw content
+# at send time, byte-for-byte, no pre-request script needed. See
+# doc/http-file-format.md's "File uploads" section.
+#
+# A relative path resolves against the current working directory (same
+# rule as everywhere else httpfly reads from disk) -- run this from inside
+# doc/examples/, where 8_photo.png sits.
+#
+# Run `make httpbin-up` first.
+
+###
+# @name RawUpload
+PUT http://localhost:8080/put HTTP/1.1
+Content-Type: image/png
+
+< ./8_photo.png
+
+###
+# @name MultipartUpload
+# The same "< path" line works inside one part of a multipart body, mixed
+# freely with plain text fields (see 5_forms.http for forms without a file).
+POST http://localhost:8080/post HTTP/1.1
+Content-Type: multipart/form-data; boundary=WebAppBoundary
+
+--WebAppBoundary
+Content-Disposition: form-data; name="avatar"; filename="8_photo.png"
+Content-Type: image/png
+
+< ./8_photo.png
+--WebAppBoundary
+Content-Disposition: form-data; name="username"
+
+alice
+--WebAppBoundary--

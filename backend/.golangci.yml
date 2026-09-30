@@ -1,0 +1,22 @@
+# golangci-lint configuration (v2 schema). Run via `make lint`; install
+# from https://golangci-lint.run/welcome/install/. `make check` (fmt +
+# vet + test) is the gate that must pass; lint is an extra, not run in
+# check, because it needs a separately installed tool.
+version: "2"
+
+linters:
+  default: standard
+  settings:
+    errcheck:
+      # stdout/stderr writes in the CLI's printing code are deliberately
+      # unchecked (there's nothing useful to do if a terminal write fails).
+      exclude-functions:
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - fmt.Fprint
+        - (*bytes.Buffer).Write
+        - (io.Writer).Write
+
+formatters:
+  enable:
+    - gofmt

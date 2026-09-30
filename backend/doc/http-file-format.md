@@ -1,0 +1,302 @@
+# .http File Format
+
+httpfly reads plain-text `.http` files in the REST Client / IntelliJ HTTP
+Client style: one or more requests, separated by `###`.
+
+## Requests
+
+```http
+###
+# @name Get
+GET http://localhost:8080/get?greeting=hello HTTP/1.1
+Accept: application/json
+
+###
+# @name Post
+POST http://localhost:8080/post HTTP/1.1
+Content-Type: application/json
+
+{
+  "name": "John",
+  "greeting": "Hello"
+}
+```
+
+A block is, in order:
+
+1. Optional leading lines: blank lines, comments, [metadata](#metadata), and
+   [local variable declarations](#variables).
+2. Exactly one request line: `METHOD URL` or `METHOD URL PROTO`. `PROTO`
+   defaults to `HTTP/1.1` if omitted. The URL **must be absolute**
+   (`scheme://host[:port]/path`) — httpfly does not guess a scheme or
+   splice in a `Host` header the way some other HTTP-file tools do; write
+   the whole URL.
+3. Zero or more header lines: `Name: Value`.
+4. An optional blank line, then everything else in the block is the request
+   body verbatim (leading/trailing blank lines trimmed; blank lines and
+   indentation *within* the body are preserved).
+
+`###` at the very start of the file is optional — content before the first
+`###` (or the whole file, if there's no `###` at all) is the
+[prelude](#prelude-global-vs-local), not a request.
+
+Any line starting with `###`, anywhere in the file, starts a new block —
+including one that appears inside a request body (e.g. a markdown `###
+Heading` in a text body). This matches JetBrains HTTP Client's own
+behavior; there's no way to escape a literal `###` inside a body. If a
+body needs one, put it in a file loaded some other way rather than inline.
+
+Trailing text on the separator line itself is shorthand for that block's
+`@name`: `### GetUsers` is equivalent to a bare `###` followed by
+`# @name GetUsers`. An explicit `# @name` line later in the same block is
+fine as long as it matches; if it names something *different*, that's an
+error (`metadata:name`) rather than one silently overwriting the other.
+
+## Metadata
+
+`# @key value` comment lines attach metadata to a request:
+
+| Key | Required | Scope | Meaning |
+|---|---|---|---|
+| `name` | **Yes** | request only | The request's identifier — used by `-name` on the CLI. Every request must have a non-empty `@name`, supplied either as `# @name Value` or as trailing text on the block's `###` separator line (see [above](#requests)); it's an error at file-prelude scope (there's no such thing as a "global name"). |
+| `lang` | No | request only | Names the scripting language for pre-/post-request scripts. `lua` is the only supported value (and the default if omitted); anything else is a warning and falls back to Lua. |
+| `proxy` | No | request or global | An absolute proxy URL (`scheme://host[:port]`) to send this request through. See [below](#proxy). |
+
+Any other `@key` is accepted but reported as an "unknown metadata" warning
+— it's recognized syntax, just not something httpfly currently acts on.
+
+### `proxy`
+
+```http
+# @proxy http://localhost:3128
+
+###
+# @name Get
+GET http://localhost:8080/get HTTP/1.1
+
+###
+# @name GetViaOtherProxy
+# @proxy http://localhost:9999
+GET http://localhost:8080/get HTTP/1.1
+```
+
+Declared in the [prelude](#prelude-global-vs-local), `@proxy` becomes the
+default for every request in the file. Declared inside a block, it
+overrides that default for just that one request. The value must resolve
+(after variable interpolation) to an absolute URL — `localhost:3128` is
+rejected as ambiguous; write `http://localhost:3128`.
+
+There's currently no way to opt a single request *out* of a global proxy
+back to a direct connection — `# @proxy` with no value is a validation
+error, not "no proxy." If you need that, don't declare `@proxy` globally;
+add it to each request that needs it instead.
+
+## Variables
+
+`{{name}}` anywhere in the URL, a header value, or the body is replaced
+with a variable's value before the request is sent. `@key = value` lines
+(not to be confused with `# @key value` metadata, which is `#`-prefixed)
+declare variables:
+
+```http
+@host = http://localhost:8080
+@greeting = hello
+
+###
+# @name Get
+GET {{host}}/get?greeting={{greeting}} HTTP/1.1
+```
+
+### Prelude: global vs. local
+
+An `@key = value` line before the first `###` declares a **global**
+variable — the default for every request in the file. The same kind of
+line *inside* a request block declares a variable **local** to that block
+only, overriding the global value just for that one request (it never
+leaks into other blocks):
+
+```http
+@env = prod
+
+###
+# @name UsesGlobal
+GET http://localhost:8080/get?env={{env}} HTTP/1.1   # -> env=prod
+
+###
+# @name UsesLocal
+@env = dev
+GET http://localhost:8080/get?env={{env}} HTTP/1.1   # -> env=dev
+```
+
+Precedence, highest to lowest: **local variable > persisted `client.global`
+(scripting) > `-env` environment variable > global (prelude) variable**.
+See [Environments](environments.md) and [Scripting](scripting.md) for the
+middle two tiers.
+
+An `{{unknown}}` placeholder with no matching declaration is left as
+literal text in the output and reported as a warning — it doesn't stop the
+request from being parsed or sent.
+
+### Variables referencing variables
+
+A variable's value can itself contain `{{placeholders}}`, expanded
+against the same set of variables (from any tier — a prelude variable can
+build on an environment one and vice versa):
+
+```http
+@scheme = http
+@host = {{scheme}}://localhost:8080
+@api = {{host}}/api
+
+###
+# @name Users
+GET {{api}}/users HTTP/1.1    # -> http://localhost:8080/api/users
+```
+
+An undefined variable inside a value is reported the same way as one in
+the request itself. A reference cycle (`@a = {{b}}` with `@b = {{a}}`) is
+an `ERROR`, since no later script could ever resolve it.
+
+### Dynamic variables
+
+A few `{{$name}}` variables are built in and generated fresh for every
+occurrence, at the moment the request is resolved (so `validate` shows
+one value and `run` sends another, and two `{{$uuid}}` in one request are
+two different UUIDs). The names match JetBrains HTTP Client's:
+
+| Variable | Value |
+|---|---|
+| `{{$uuid}}` | A random version-4 UUID, e.g. `3f2a9c1e-8b4d-4e6f-9a1b-2c3d4e5f6a7b` |
+| `{{$timestamp}}` | Current Unix time in seconds, e.g. `1758196800` |
+| `{{$isoTimestamp}}` | Current UTC time in RFC 3339 form, e.g. `2026-09-18T12:00:00Z` |
+| `{{$randomInt}}` | A random integer from 0 to 1000 |
+
+```http
+###
+# @name Create
+POST http://localhost:8080/post HTTP/1.1
+X-Request-Id: {{$uuid}}
+Content-Type: application/json
+
+{"created_at": "{{$isoTimestamp}}", "nonce": {{$randomInt}}}
+```
+
+Any other `{{$name}}` is reported as an undefined variable, the same as an
+unknown plain `{{name}}` — never sent as literal text. A declared
+`@key = value` can't start with `$`, so nothing can shadow a built-in.
+
+### URL encoding
+
+A variable substituted into a query parameter's *value* is percent-encoded
+automatically, so a value containing a space or `&` doesn't corrupt the
+request:
+
+```http
+@greeting = Hello again
+
+GET http://localhost:8080/get?greeting={{greeting}} HTTP/1.1
+# sent as: ?greeting=Hello+again
+```
+
+Anywhere else in the URL — the host/scheme prefix, or a path segment — a
+variable is substituted raw, so `{{host}}` holding a full
+`http://localhost:8080` prefix works as expected instead of having its `/`
+and `:` mangled into `%2F`/`%3A`.
+
+## File uploads
+
+A body line reading `< path/to/file` is replaced with that file's raw
+bytes (JetBrains HTTP Client's own convention) — no pre-request script
+needed to read a file in by hand:
+
+```http
+### RawUpload
+PUT http://localhost:8080/put HTTP/1.1
+Content-Type: image/png
+
+< ./photo.png
+```
+
+The same line shape works inside one part of a multipart body:
+
+```http
+### MultipartUpload
+POST http://localhost:8080/post HTTP/1.1
+Content-Type: multipart/form-data; boundary=WebAppBoundary
+
+--WebAppBoundary
+Content-Disposition: form-data; name="avatar"; filename="photo.png"
+Content-Type: image/png
+
+< ./photo.png
+--WebAppBoundary--
+```
+
+### Multipart line endings
+
+A body whose `Content-Type` is any `multipart/*` type is sent with CRLF
+(`\r\n`) line endings regardless of how the `.http` file is saved, as
+RFC 2046 requires between parts and part headers — lenient servers
+accept bare LF, strict ones reject it, so httpfly normalizes the same way
+JetBrains HTTP Client and `curl -F` do. Bytes spliced in from a `< path`
+reference are never touched. Every other body is sent byte-for-byte as
+written.
+
+A relative path resolves against the current working directory — same
+rule as everything else httpfly reads from disk (see
+[Environments](environments.md)), not the `.http` file's own directory.
+The path can itself use `{{var}}` interpolation (e.g. `< ./{{env}}/cert.pem`).
+
+A file that can't be read is a warning at `validate` time (a pre-request
+script might still create it before the request is actually sent — same
+reasoning as an undefined `{{variable}}`), escalated to a hard error by
+`run`/`convert to-curl` immediately before it's actually needed.
+`validate` only checks that the file can be opened; the bytes are read
+exactly once, by `run`, right before the request is sent.
+
+`convert from-curl`/`convert to-curl` understand this too — see
+[Usage](usage.md#convert-from-curl).
+
+## Comments
+
+Any `#`-prefixed line that isn't `# @key value` metadata is a plain
+comment and is ignored — before the request line, and also among the
+headers, so a header can be disabled and re-enabled in place:
+
+```http
+###
+# @name WithoutAuth
+GET http://localhost:8080/get HTTP/1.1
+# Authorization: Bearer {{token}}
+Accept: application/json
+```
+
+Two things are *not* comments:
+
+- Inside the body (everything after the blank line that ends the headers),
+  a `#` line is body content and is sent as-is.
+- `# @key value` metadata placed among the headers is an `ERROR` — metadata
+  belongs before the request line. Ignoring a misplaced `# @name` silently
+  would leave the block unreachable via `-name`.
+
+## Validation
+
+`httpfly validate` checks every block (see [Usage](usage.md#validate) for
+the report format). At a glance:
+
+| Severity | Examples |
+|---|---|
+| `ERROR` (blocks the request / fails validation) | Missing or empty `@name`; the same `@name` used by more than one request in the file; a separator-line name that conflicts with an explicit `# @name` in the same block; request line that isn't `METHOD URL [PROTO]`; relative URL; malformed header line (no `:`); `@proxy` that isn't absolute; `@name`/`@lang` declared in the prelude; `# @key` metadata placed among the headers instead of before the request line; a malformed or unterminated script block; a script with invalid Lua syntax; a variable reference cycle (`@a = {{b}}`, `@b = {{a}}`). |
+| `WARN` (still usable, just worth knowing) | Unknown `@key`; non-standard HTTP method; unrecognized `PROTO` string; `@lang` set to something other than `lua`; undefined `{{variable}}`; a `< path/to/file` body reference that couldn't be read. |
+
+`doc/examples/invalid.http` in this repo demonstrates each of these, one
+issue per block — a good file to run `httpfly validate` against to see the
+report format.
+
+## Scripting
+
+A request can carry a `< {% ... %}` (pre-request) and/or `> {% ... %}`
+(post-request) Lua script — for capturing an auth token from a response,
+reading a local file, or running a command. See [Scripting](scripting.md)
+for the full reference; `httpfly validate` only checks a script compiles,
+it never executes one.

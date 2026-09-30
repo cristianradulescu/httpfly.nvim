@@ -1,0 +1,24 @@
+# Delegating auth to an external shell script from a pre-request script --
+# useful when the login flow is too complex or awkward to reimplement
+# inline (a company-internal CLI that talks to a vault/hardware token, a
+# multi-request OAuth device-code exchange, decrypting a credential file,
+# etc.). generate-token.sh next to this file stands in for that: shell out
+# to it, capture its stdout, and use it as the request's token.
+#
+# cmd.exec runs relative to httpfly's own process cwd -- run this from
+# inside doc/examples/ so the plain relative path below resolves:
+#
+#   cd doc/examples
+#   httpfly run 6_shell_auth.http
+#
+# Run `make httpbin-up` first.
+
+###
+# @name Get
+< {%
+  local cmd = require("cmd")
+  local result = cmd.exec("./generate-token.sh")
+  client.global:set("auth_token", (result.stdout or ""):gsub("%s+$", ""))
+%}
+GET http://localhost:8080/bearer HTTP/1.1
+Authorization: Bearer {{auth_token}}
