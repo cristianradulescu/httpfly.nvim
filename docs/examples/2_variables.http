@@ -7,9 +7,9 @@
 # Run `make httpbin-up` first. See 1_basic.http for plain requests and
 # 3_scripting.http for pre-request/post-request scripting.
 #
-# `host` here is also a good candidate for an environment override -- try
-# `httpfly run -env dev-alt-port 2_variables.http` against http-client.env.json
-# in this directory (it points at a port nothing's listening on, so you'll
+# `host` here is also a good candidate for an environment override -- pick
+# `dev-alt-port` with :HttpEnv (from http-client.env.json in this
+# directory) and send again (it points at a port nothing's listening on, so you'll
 # see a connection error instead of a response, which is the point: the
 # environment's value won the override over this file's own default).
 # http-client.env.json also declares a "$shared" greeting, inherited by both
@@ -17,7 +17,7 @@
 #
 # The Post request also uses two built-in dynamic variables -- {{$uuid}}
 # and {{$isoTimestamp}} -- generated fresh each time the request is sent
-# (see doc/http-file-format.md's "Dynamic variables").
+# (see docs/http-file-format.md's "Dynamic variables").
 
 @host = http://localhost:8080
 @greeting = hello

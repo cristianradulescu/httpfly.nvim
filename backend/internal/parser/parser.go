@@ -8,7 +8,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/cristianradulescu/httpfly/internal/httpfile"
+	"github.com/cristianradulescu/httpfly.nvim/backend/internal/httpfile"
 )
 
 const separator = "###"

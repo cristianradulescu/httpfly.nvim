@@ -9,63 +9,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **httpfly is now bundled.** The Go backend (formerly the standalone
-  [`cristianradulescu/httpfly`](https://github.com/cristianradulescu/httpfly)
-  repo, merged here with its full history under `backend/`) is built as
-  part of installing the plugin: add `build = "make build"` to your
-  lazy.nvim spec (or run `make build` in the plugin directory with other
-  plugin managers). This needs Go 1.26+ and `make`; a separately
-  installed `httpfly` on `$PATH` is no longer needed or used.
-- `cmd` now defaults to `nil`, meaning the bundled `bin/httpfly`. Setting
-  it still overrides the binary (e.g. to a development build). If you
-  had `cmd = "httpfly"` in your `setup({})`, remove it to use the bundled
-  backend.
-- The "requires an httpfly newer than v0.3.1" notes in this release no
-  longer apply: the bundled backend always matches the plugin. The backend
-  changes that ship with it (e.g. `{{$uuid}}` and other dynamic
-  variables, variables referencing other variables, `#` comments among
-  headers) are listed under `[Unreleased]` in `backend/CHANGELOG.md`.
-- A post-request script error is now labelled `script error:` instead of
-  `post-request script error:` in both renderers — httpfly's own
-  `script_error` text already starts with `post-request script:`, so the
-  old label read as a doubled prefix.
-- Requires an httpfly newer than v0.3.1 for the stderr behavior above; on
-  older versions script `print` output still lands in stdout ahead of
-  the JSON (tolerated by `extract_json` as long as it contains no `[`).
-  That same httpfly change also rejects a file that reuses one `@name` on two
-  blocks; `:HttpSend` on such a file shows httpfly's own error in the
-  result buffer rather than silently sending the first block.
-
-### Fixed
-
-- Request/response bodies with CRLF line endings no longer render with a
-  trailing `^M` on every line in the result buffer — relevant since
-  httpfly (newer than v0.3.1) sends `multipart/*` request bodies with CRLF and
-  reports them that way in `-json`'s `request.body`.
-
-### Removed
-
-- The markdown output style, and with it the `output_style` option — the
-  unicode (box-drawing, directly highlighted) style is now the only one.
-  The result buffer is always `filetype = "text"` and history files always
-  get `.txt`. Drop `output_style` from your `setup({})` call.
-- `:HttpEnvVars` no longer renders its popup as markdown either: it's now
-  a plain-text list in the same box-drawn style as the result pane (a
-  ruled title, each variable name highlighted with its value on the
-  indented line below, wrapping as before), `filetype = "text"`.
+- The httpfly backend is now part of this repo (`backend/`) and is built
+  when the plugin is installed: add `build = "make build"` to your
+  lazy.nvim spec, or run `make build` in the plugin directory. Requires
+  Go 1.26+ and `make`. A separately installed `httpfly` is no longer used.
+- `cmd` now defaults to `nil`, meaning the bundled `bin/httpfly`. Remove
+  `cmd = "httpfly"` from your `setup({})` if you had it.
+- `client.global:get(name)` returns `nil` for a variable that was never
+  set, instead of `""`, so `client.global:get("token") or "default"`
+  works.
+- `multipart/*` request bodies are sent with CRLF line endings, as the
+  multipart format requires, however the `.http` file is saved.
+- A script's `print(...)` output is shown in its own `stderr` section of
+  the result pane, even when the send succeeds.
+- A post-request script error is labelled `script error:`.
 
 ### Added
 
-- `:checkhealth httpfly`: reports whether the backend binary is built,
-  its version, and whether `go` is available to (re)build it.
-- New `timeout` option (e.g. `timeout = "2m"`), passed through as
-  httpfly's `run -timeout`, for requests or downloads that need longer
-  than httpfly's 30s default. Requires an httpfly newer than v0.3.1.
-- httpfly's stderr is now shown in the result buffer as its own
-  `stderr` section whenever it's non-empty, even on a successful run —
-  since httpfly's post-v0.3.1 change a script's `print(...)` writes there (never to
-  stdout, which stays pure JSON), so this is where script debugging
-  output lands. Previously stderr was only shown on a non-zero exit.
+- `:checkhealth httpfly`: whether the backend is built, its version, and
+  whether Go is available to build it.
+- `timeout` option (e.g. `timeout = "2m"`) for requests or downloads
+  that need longer than the default 30s.
+- Dynamic variables: `{{$uuid}}`, `{{$timestamp}}`, `{{$isoTimestamp}}`
+  and `{{$randomInt}}`.
+- Variables can reference other variables
+  (`@host = {{scheme}}://localhost:8080`).
+- `#` comment lines among a request's headers, to disable a header in
+  place.
+- Documentation for the `.http` format, environments, scripting and the
+  backend in `docs/`, with runnable examples in `docs/examples/`.
+
+### Fixed
+
+- Two requests with the same `@name` in one file are now an error;
+  previously `:HttpSend` could silently send the wrong one.
+- Bodies with CRLF line endings no longer show a trailing `^M` on every
+  line in the result pane.
+
+### Removed
+
+- The markdown output style and the `output_style` option. Results and
+  history files are always plain text (`.txt`). Remove `output_style`
+  from your `setup({})`.
+- `:HttpEnvVars` is plain text too, in the same style as the result pane.
 
 ## [0.3.0] - 2026-10-15
 
@@ -136,7 +122,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Switched the backend from [httpyac](https://httpyac.github.io/) to
-  [httpfly](https://github.com/cristianradulescu/httpfly), a purpose-built
+  httpfly, a purpose-built
   CLI for this plugin. `cmd` now defaults to `httpfly`; `env_file` now
   defaults to `httpfly.env.json`.
 - Environment files: a single `httpfly.env.json` (`{"shared": {...},

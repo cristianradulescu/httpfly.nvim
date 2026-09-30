@@ -1,58 +1,29 @@
 # httpfly.nvim
 
-Send `.http` requests from Neovim and view the response in a colored,
-box-drawn result pane. Requests are executed by httpfly, a small Go
-backend bundled in this repo under [`backend/`](backend/) and built as
-part of installing the plugin.
+Send requests from JetBrains-style `.http` files in Neovim and view the
+responses in a colored result pane.
 
 ![httpfly.nvim showing a request file next to the rendered response](screenshot.png)
 
-> **New here?** Check out
-> [`backend/doc/examples/`](backend/doc/examples/)
-> for runnable `.http` files covering everything below, from basic requests
-> to scripting.
+- `###`-separated requests with `{{variables}}`, dynamic values
+  (`{{$uuid}}`, `{{$timestamp}}`, ...), proxies and file uploads
+- Environments from `http-client.env.json`, with an optional
+  uncommitted `http-client.private.env.json`
+- Lua pre-/post-request scripts, with variables that persist across sends
+  (e.g. a login token)
+- Headers as tables, and JSON bodies pretty-printed and highlighted
+- Response bodies saved to disk with `# @download`
+- A saved copy of every result
 
-## Scope
-
-The Lua side of this plugin does **not** implement request execution,
-variables, or scripting itself — the bundled httpfly backend does that.
-The Lua side just wires it into Neovim:
-
-- discovers/selects the httpfly environment (`http-client.env.json`, plus
-  an optional `http-client.private.env.json` overlay) for the current file
-- runs `httpfly run` on the request under your cursor (or the whole file)
-- formats the JSON result (request/response headers as a table, bodies
-  pretty-printed and syntax-highlighted when JSON, status line) in a split
-- lets you preview values that got truncated in header tables (e.g. long
-  bearer tokens) in a floating window
-- saves a copy of every result under `.httpfly/history/`
-- saves a response body to disk byte-perfect for any request marked
-  `# @download`
-
-If you need JetBrains HTTP Client-style syntax (`###` separators,
-`{{variables}}`, `< {% ... %}`/`> {% ... %}` Lua pre/post-request scripts,
-`http-client.env.json` environments), that comes from httpfly — this
-plugin doesn't reimplement or restrict any of it. The full syntax is
-documented in [`backend/doc/`](backend/doc/):
-[.http file format](backend/doc/http-file-format.md),
-[environments](backend/doc/environments.md) and
-[scripting](backend/doc/scripting.md).
-
-See [`backend/doc/examples/`](backend/doc/examples/) for runnable `.http` files covering plain GET/POST, pre-/post-request
-scripting (including a login → token → authenticated-request chain),
-environments, shelling out to a script for auth tokens, forms
-(`application/x-www-form-urlencoded` and `multipart/form-data`), saving a
-response body for its own sake, and downloading a response to disk via
-`# @download`.
+Requests are sent by httpfly, a small Go program in [`backend/`](backend/)
+that is compiled when the plugin is installed.
 
 ## Requirements
 
 - Neovim 0.10+
-- Go 1.26+ and `make`, to build the bundled httpfly backend
-  (`make build` compiles it into the plugin's own `bin/httpfly`; nothing
-  is installed on your `$PATH`)
+- Go 1.26+ and `make`, to build the backend
 
-## Setup
+## Installation
 
 With [lazy.nvim](https://github.com/folke/lazy.nvim):
 
@@ -65,207 +36,110 @@ With [lazy.nvim](https://github.com/folke/lazy.nvim):
 }
 ```
 
-`build = "make build"` rebuilds the backend on every install and update,
-so it always matches the plugin's Lua side. With another plugin manager,
-run `make build` in the plugin's directory after installing or updating.
-`:checkhealth httpfly` reports whether the binary is built and which
-version it is.
+`make build` compiles the backend into the plugin's own `bin/httpfly`,
+and lazy.nvim reruns it on every update. With other plugin managers, run
+`make build` in the plugin directory after installing or updating.
+`:checkhealth httpfly` shows whether the backend is built.
 
-Calling `require("httpfly").setup({})` (or passing `opts = {}` above) isn't
-required — all options have defaults — but it's the way to override them:
+## Configuration
+
+All options are optional. These are the defaults:
 
 ```lua
 require("httpfly").setup({
-  cmd = nil,                                   -- httpfly binary to run; nil = the bundled bin/httpfly
-  env_file = "http-client.env.json",           -- environment file name to look for
-  private_env_file = "http-client.private.env.json", -- optional overlay, alongside env_file
-  keymaps = true,                              -- set the default <leader>h* keymaps below
-  max_header_value_len = 100,                  -- header table cell truncation length
-  preview_keymap = "K",                        -- keymap to preview a truncated value
-  timeout = nil,                               -- per-request timeout as a Go duration ("2m"); nil = httpfly's 30s default
+  cmd = nil,                                         -- httpfly binary; nil = the bundled bin/httpfly
+  env_file = "http-client.env.json",                 -- environment file name
+  private_env_file = "http-client.private.env.json", -- private overlay, next to env_file
+  keymaps = true,                                    -- set the <leader>h* keymaps below
+  max_header_value_len = 100,                        -- truncate longer header values in tables
+  preview_keymap = "K",                              -- show a truncated value in full
+  timeout = nil,                                     -- per-request timeout, e.g. "2m"; nil = 30s
 })
 ```
 
 ## Usage
 
-Open a `.http` file and:
+In a `.http` file:
 
-| Command         | Keymap        | Does                                                |
-|-----------------|---------------|------------------------------------------------------|
-| `:HttpEnv`      | `<leader>he`  | Pick the httpfly environment for this file            |
-| `:HttpEnv dev`  | —             | Set the environment directly, without the picker      |
-| `:HttpEnvVars`  | `<leader>hv`  | Show the selected environment's merged variables       |
-| `:HttpSend`     | `<leader>hs`  | Send the request under the cursor                     |
-| `:HttpSendAll`  | `<leader>ha`  | Send every request in the file                        |
-| `:HttpSessionClear` | `<leader>hc` | Clear persisted `client.global` state (see below) |
+| Command             | Keymap       | Does                                              |
+|---------------------|--------------|---------------------------------------------------|
+| `:HttpSend`         | `<leader>hs` | Send the request under the cursor                 |
+| `:HttpSendAll`      | `<leader>ha` | Send every request in the file                    |
+| `:HttpEnv`          | `<leader>he` | Pick the environment                              |
+| `:HttpEnv dev`      |              | Select an environment directly                    |
+| `:HttpEnvVars`      | `<leader>hv` | Show the resolved variables                       |
+| `:HttpSessionClear` | `<leader>hc` | Delete variables persisted by scripts             |
 
-The response opens in a vertical split (`filetype = "text"`): headers as a
-table, request/response sections and a body block, drawn with Unicode
-box-drawing characters (`┌─┬─┐`, `━━━`) and colored (status, method,
-section titles, JSON body syntax — keys, strings, numbers, booleans,
-null) via highlights the plugin applies directly to the buffer, with no
-extra plugin or treesitter parser needed. In that split, put the cursor on a truncated header value and press `K` to see the full
-value in a floating window.
+A request looks like this (every request needs a name):
 
-The currently selected environment for the file is shown in the winbar
-(`env: dev`, or `env: (none, :HttpEnv)` before you've picked one).
+```http
+@host = http://localhost:8080
 
-### Environments
+### GetUser
+GET {{host}}/users/1 HTTP/1.1
+Accept: application/json
 
-`:HttpEnv` searches upward from the current file's own directory for
-`http-client.env.json` (see "Directory resolution" below), and lists every
-top-level key — across that file and, if present, its optional
-`http-client.private.env.json` overlay — as choices:
+### CreateUser
+POST {{host}}/users HTTP/1.1
+Content-Type: application/json
 
-```json
-{
-  "$shared": {
-    "client_name": "my-app"
-  },
-  "dev": { "base_url": "https://dev.example.com" },
-  "prod": { "base_url": "https://api.example.com" }
-}
+{"name": "Ada"}
 ```
 
-`"$shared"` is merged as defaults into every environment (overridden by
-that environment's own values on conflict) — it's not itself a selectable
+The result opens in a vertical split. Put the cursor on a truncated header
+value and press `K` to see all of it. The winbar shows the selected
 environment.
-
-For values you don't want committed (credentials, personal tokens, or a
-fully local-only environment), add an optional sibling
-`http-client.private.env.json` in the same directory, same shape:
-
-```json
-{
-  "$shared": {
-    "api_key": "my-personal-key"
-  },
-  "local": { "base_url": "http://localhost:8080" }
-}
-```
-
-Its values override the public file's on a per-key basis for any
-environment both files define, and it may also define an environment the
-public file doesn't have at all (like `local` above) — that's a valid,
-selectable choice too. A missing private file is normal, not an error.
-Precedence, lowest to highest: public `$shared` < public `<env>` < private
-`$shared` < private `<env>`. `.gitignore` the private file (this plugin
-doesn't do it for you):
-
-```
-http-client.private.env.json
-```
-
-The selected environment is remembered per env-file, so different projects
-don't interfere with each other. Run `:HttpEnvVars` any time to see exactly
-which values are in effect for the selected environment (the precedence
-chain above, then persisted `client.global` state — see below — overriding
-all of it, the same order httpfly itself applies when sending requests).
-Variables added or overridden by persisted state are marked `(session)` /
-`(overridden by session)`.
-
-### Directory resolution
-
-httpfly resolves `http-client.env.json` (plus its optional private overlay)
-and `.httpfly/state.json` relative to its own process's **current working
-directory only** — there's no upward directory search on httpfly's own
-side. This plugin compensates by searching upward from the `.http` file's
-own directory for `http-client.env.json`, and always launching httpfly with
-that directory as `cwd` (falling back to the `.http` file's own directory
-if no env file is found anywhere upward). This lets one
-`http-client.env.json` at a project's root serve `.http` files nested
-arbitrarily far below it — a subtree that needs a genuinely different
-environment just keeps its own copy of the file closer to those `.http`
-files, which shadows the root one for anything under it. `.httpfly/state.json`
-and `.httpfly/history/` follow the same resolved directory, so persisted
-session state and history are shared by every `.http` file under it, not
-scoped per subdirectory.
-
-### Chaining requests across separate sends
-
-`client.global:set(...)` in a Lua script writes straight through to
-`.httpfly/state.json`, immediately — not just at the end of a run. httpfly
-does this natively, so a value one request's post-request script sets is
-picked up by a later request in the same `:HttpSendAll`, and by any request
-in a later, separate `:HttpSend` — no plugin hook or extra configuration
-needed on this plugin's side. Run `:HttpSessionClear` to delete the state
-file (e.g. once a token expires).
 
 ### Downloading files
 
-`# @download` on a request saves its response body to disk, byte-perfect —
-for any response, not just binary content (an image, a PDF, a JSON body,
-plain text, ...). It's just as reliable as scripting `response.body`
-yourself (see "Scripting notes" below, and the
-[`7_save_response.http`](backend/doc/examples/7_save_response.http) example — Lua strings are byte arrays, so nothing is
-lost either way, even for binary content); the advantage of `# @download`
-is convenience — no script to
-write, and it works the same from `:HttpSend` or `:HttpSendAll`. This is
-this plugin's own annotation, not httpfly's — httpfly itself has no
-per-request download marker, only a plain `-download F` flag on `run`,
-which only ever applies to a single selected request. This plugin scans
-the buffer for `# @download` and wires that flag up automatically whenever
-it finds one, so it works the same whether you send the request with
-`:HttpSend` or as part of `:HttpSendAll` (a file mixing `@download` and
-ordinary requests is sent as one `httpfly run -name X` invocation per
-request instead of httpfly's own single multi-request `run <file>`, so
-each request can get its own `-download`; files with no `@download` at all
-are unaffected and still go through one invocation).
+Add `# @download` to a request to save its response body, byte for byte,
+under `.httpfly/downloads/` instead of showing it. The file is named after
+the URL's last path segment; use `# @download name.ext` to choose the
+name. The result pane shows the saved path.
 
-Bare `# @download` picks a filename from the URL's last path segment.
-Unlike a browser, there's no way to name the file from the *response*
-(`Content-Disposition`, a content-type-guessed extension) — httpfly needs
-the destination path upfront, before the request is even sent — so use
-`# @download some-name.ext` to set an explicit filename whenever the URL
-alone won't give you a sensible one (httpbin's `/image/png`, for instance,
-has no real filename in its path). Either way, the file is saved under
-`.httpfly/downloads/` next to the `.http` file — the same place
-`.httpfly/history/` and `.httpfly/state.json` live, so the one `.gitignore`
-entry (see below) still covers everything. That directory is created for
-you if it doesn't exist yet.
+```http
+### GetLogo
+# @download logo.png
+GET https://example.com/logo.png HTTP/1.1
+```
 
-The saved path shows up in the rendered output as a "Downloaded to" line in
-place of the response body.
+### The `.httpfly/` directory
 
-### Scripting notes
+A `.httpfly/` directory is created next to `http-client.env.json` (or
+next to the `.http` file if there's no environment file). It holds:
 
-Scripts are Lua (`< {% ... %}` pre-request, `> {% ... %}` post-request) —
-the only language httpfly currently supports. `response.body` is always the
-raw response text, whatever its `Content-Type`; decode it yourself with
-`json.decode(response.body)` when it's JSON. There's no per-request
-"local variable" API for a pre-request script — the only mutable store a
-script can reach is the persisted `client.global`, so even a value meant to
-be used only within the current request has to go through it.
+- `state.json`: variables persisted by scripts, which may be secrets
+- `history/`: a copy of every rendered result
+- `downloads/`: `# @download` files
 
-### History
-
-Every successfully rendered response is also saved to `.httpfly/history/`
-next to the `.http` file's own directory (the same directory httpfly's own
-`.httpfly/state.json` lives in), named by timestamp
-(`YYYYMMDD-HHMMSS-microseconds.txt`).
-
-### Gitignore
-
-Both the persisted state file and history live under a single `.httpfly/`
-directory next to your env file, so ignoring the whole thing covers both
-(and the state file can hold captured secrets, so this is worth doing):
+Add it to your `.gitignore`:
 
 ```
 .httpfly/
 ```
 
+## Documentation
+
+- [.http file format](docs/http-file-format.md): requests, metadata,
+  variables, file uploads
+- [Environments](docs/environments.md): `http-client.env.json`, private
+  overrides, and how the file is found
+- [Scripting](docs/scripting.md): Lua pre-/post-request scripts and
+  persisted variables
+- [Examples](docs/examples/): runnable `.http` files. Run
+  `make httpbin-up` first for a local test server (needs Docker).
+- [Backend](docs/backend.md): how the plugin runs httpfly, its command
+  line and its JSON output
+
 ## Development
 
-The repo holds both halves of the plugin: the Lua UI (`lua/`, `plugin/`,
-`ftdetect/`, `ftplugin/`) and the Go backend (`backend/`, its own Go
-module). The root `Makefile` covers both:
+The Lua plugin is at the repo root (`lua/`, `plugin/`, `ftdetect/`,
+`ftplugin/`) and the Go backend is in `backend/`. The `Makefile` covers
+both:
 
 ```sh
-make build        # compile backend → bin/httpfly
+make build        # compile the backend into bin/httpfly
 make check        # gofmt check, go vet, go test, stylua --check
-make httpbin-up   # local httpbin on :8080 for backend/doc/examples/*.http
+make httpbin-up   # local httpbin on :8080 for docs/examples
 make httpbin-down
 ```
-
-The backend's `-json` output is the contract with the Lua renderers
-(`lua/httpfly/format/`); see [`backend/doc/usage.md`](backend/doc/usage.md#-json).

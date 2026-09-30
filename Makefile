@@ -6,7 +6,7 @@ HTTPBIN_PORT  ?= 8080
 # or "dev" outside a git checkout.
 VERSION     := $(shell git describe --tags --always --dirty 2>/dev/null | sed 's/^v//' || true)
 VERSION     := $(or $(VERSION),dev)
-VERSION_PKG := github.com/cristianradulescu/httpfly/internal/cli
+VERSION_PKG := github.com/cristianradulescu/httpfly.nvim/backend/internal/cli
 
 LUA_DIRS := lua plugin ftdetect ftplugin
 
@@ -48,7 +48,7 @@ format-fix:
 ## Run everything CI would run.
 check: lint-backend vet test format
 
-## Start a local httpbin container for trying the backend/doc/examples/*.http files against.
+## Start a local httpbin container for trying the docs/examples/*.http files against.
 httpbin-up:
 	docker run --rm -d --name $(HTTPBIN_NAME) -p $(HTTPBIN_PORT):80 $(HTTPBIN_IMAGE)
 	@echo "httpbin running at http://localhost:$(HTTPBIN_PORT)"

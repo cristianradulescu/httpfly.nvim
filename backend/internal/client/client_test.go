@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/cristianradulescu/httpfly/internal/httpfile"
+	"github.com/cristianradulescu/httpfly.nvim/backend/internal/httpfile"
 )
 
 func TestSendGetRequest(t *testing.T) {

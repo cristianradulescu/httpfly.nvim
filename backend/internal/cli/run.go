@@ -11,11 +11,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cristianradulescu/httpfly/internal/client"
-	"github.com/cristianradulescu/httpfly/internal/httpfile"
-	"github.com/cristianradulescu/httpfly/internal/parser"
-	"github.com/cristianradulescu/httpfly/internal/script"
-	"github.com/cristianradulescu/httpfly/internal/state"
+	"github.com/cristianradulescu/httpfly.nvim/backend/internal/client"
+	"github.com/cristianradulescu/httpfly.nvim/backend/internal/httpfile"
+	"github.com/cristianradulescu/httpfly.nvim/backend/internal/parser"
+	"github.com/cristianradulescu/httpfly.nvim/backend/internal/script"
+	"github.com/cristianradulescu/httpfly.nvim/backend/internal/state"
 )
 
 // requestOutcome is one request's result plus any error from its

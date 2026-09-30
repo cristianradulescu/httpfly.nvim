@@ -1,0 +1,14 @@
+# Saving a binary response body to a file instead of rendering it -- the
+# "# @download" annotation below saves the body byte-for-byte under
+# .httpfly/downloads/ (bare "# @download" names the file after the URL's
+# last path segment; "# @download name.ext" sets it explicitly). The result
+# pane shows the saved path in place of the body. See 7_save_response.http
+# for saving a response body yourself from a post-request script instead.
+#
+# Run `make httpbin-up` first.
+
+###
+# @name GetPNG
+# @download photo.png
+GET http://localhost:8080/image/png HTTP/1.1
+Accept: image/png

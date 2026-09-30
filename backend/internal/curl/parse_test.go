@@ -253,7 +253,7 @@ func TestParseRealChromeExample(t *testing.T) {
 		"  -H 'dnt: 1' \\\n" +
 		"  -H 'if-none-match: W/\"0c341038a74e06d043870e132158ed4e\"' \\\n" +
 		"  -H 'priority: u=1, i' \\\n" +
-		"  -H 'referer: https://github.com/cristianradulescu/httpfly' \\\n" +
+		"  -H 'referer: https://example.com/' \\\n" +
 		"  -H 'sec-ch-ua: \"Not=A?Brand\";v=\"99\", \"Google Chrome\";v=\"151\", \"Chromium\";v=\"151\"' \\\n" +
 		"  -H 'sec-ch-ua-mobile: ?0' \\\n" +
 		"  -H 'sec-ch-ua-platform: \"Linux\"' \\\n" +

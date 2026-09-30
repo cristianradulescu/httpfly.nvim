@@ -3,7 +3,7 @@ package cli
 import (
 	"os"
 
-	"github.com/cristianradulescu/httpfly/internal/env"
+	"github.com/cristianradulescu/httpfly.nvim/backend/internal/env"
 )
 
 // configDir returns the directory httpfly looks in for http-client.env.json

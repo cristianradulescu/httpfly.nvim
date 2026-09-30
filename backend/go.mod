@@ -1,4 +1,4 @@
-module github.com/cristianradulescu/httpfly
+module github.com/cristianradulescu/httpfly.nvim/backend
 
 go 1.26
 

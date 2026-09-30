@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cristianradulescu/httpfly/internal/httpfile"
+	"github.com/cristianradulescu/httpfly.nvim/backend/internal/httpfile"
 )
 
 // DefaultTimeout is the per-request timeout New applies (see Client.HTTP)

@@ -6,9 +6,9 @@ import (
 	"io"
 	"os"
 
-	"github.com/cristianradulescu/httpfly/internal/curl"
-	"github.com/cristianradulescu/httpfly/internal/parser"
-	"github.com/cristianradulescu/httpfly/internal/state"
+	"github.com/cristianradulescu/httpfly.nvim/backend/internal/curl"
+	"github.com/cristianradulescu/httpfly.nvim/backend/internal/parser"
+	"github.com/cristianradulescu/httpfly.nvim/backend/internal/state"
 )
 
 // defaultConvertedRequestName is the @name a converted request gets when

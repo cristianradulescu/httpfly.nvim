@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/cristianradulescu/httpfly/internal/httpfile"
+	"github.com/cristianradulescu/httpfly.nvim/backend/internal/httpfile"
 )
 
 // Format renders req as a single "###"-delimited .http request block.

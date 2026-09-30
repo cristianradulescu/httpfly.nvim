@@ -9,7 +9,7 @@ import (
 // run, go build without flags) and is overridden by the httpfly.nvim
 // repo's root Makefile (`make build`) with the plugin's own git tag via:
 //
-//	go build -ldflags "-X github.com/cristianradulescu/httpfly/internal/cli.Version=X.Y.Z"
+//	go build -ldflags "-X github.com/cristianradulescu/httpfly.nvim/backend/internal/cli.Version=X.Y.Z"
 //
 // Callers that display a version should use EffectiveVersion instead.
 var Version = "dev"

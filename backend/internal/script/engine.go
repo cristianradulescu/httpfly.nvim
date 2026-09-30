@@ -16,8 +16,8 @@ import (
 	luaioutil "github.com/vadv/gopher-lua-libs/ioutil"
 	luajson "github.com/vadv/gopher-lua-libs/json"
 
-	"github.com/cristianradulescu/httpfly/internal/client"
-	"github.com/cristianradulescu/httpfly/internal/state"
+	"github.com/cristianradulescu/httpfly.nvim/backend/internal/client"
+	"github.com/cristianradulescu/httpfly.nvim/backend/internal/state"
 )
 
 // GlobalState is one directory+environment's persisted "client.global"

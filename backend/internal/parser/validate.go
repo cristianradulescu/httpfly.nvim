@@ -9,8 +9,8 @@ import (
 
 	lua "github.com/yuin/gopher-lua"
 
-	"github.com/cristianradulescu/httpfly/internal/httpfile"
-	"github.com/cristianradulescu/httpfly/internal/interpolate"
+	"github.com/cristianradulescu/httpfly.nvim/backend/internal/httpfile"
+	"github.com/cristianradulescu/httpfly.nvim/backend/internal/interpolate"
 )
 
 // Severity is how serious a validation Issue is. A Warning means the file is

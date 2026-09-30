@@ -1,7 +1,48 @@
-# Usage
+# Backend
+
+The plugin sends requests through `httpfly`, a Go program in
+[`backend/`](../backend/). `make build` compiles it into `bin/httpfly`,
+and the plugin runs that binary (or the path set in its `cmd` option).
+This page covers how the plugin uses the backend and documents the
+backend's command line, for working on either side.
+
+## How the plugin calls it
+
+Every send is one or more `httpfly run -json` invocations:
 
 ```
-httpfly <command> [arguments]
+bin/httpfly run -json [-env E] [-timeout D] [-download F] [-name X] <file.http>
+```
+
+- `-env` is the environment picked with `:HttpEnv`, and `-timeout` is the
+  `timeout` option.
+- `:HttpSend` passes `-name` with the name of the request under the
+  cursor. `:HttpSendAll` sends the whole file in one invocation, unless
+  some request has `# @download`. Then each request is sent separately in
+  file order, because `-download` works on one request at a time.
+- `# @download [name]` becomes `-download .httpfly/downloads/<name>`, and
+  the plugin creates that directory first.
+- The working directory is the nearest directory at or above the `.http`
+  file that contains `http-client.env.json`, or the `.http` file's own
+  directory if there isn't one. httpfly finds `http-client.env.json`,
+  `http-client.private.env.json` and `.httpfly/state.json` in its working
+  directory, and resolves relative paths (`< file` bodies, `cmd.exec`)
+  from there.
+
+The plugin renders stdout (the [`-json`](#-json) array) in the result
+pane. Anything written to stderr, such as script `print(...)` output or a
+parse error, is shown in its own section.
+
+## Running it directly
+
+```sh
+make build
+make httpbin-up                       # local httpbin on :8080 (needs Docker)
+cd docs/examples
+../../bin/httpfly run 1_basic.http
+../../bin/httpfly run -name Login 3_scripting.http
+../../bin/httpfly validate invalid.http
+make -C ../.. httpbin-down
 ```
 
 ## Commands
@@ -167,7 +208,7 @@ request's still-templated body — use a literal, already-resolved path if
 you plan to `to-curl` it.
 
 ```sh
-httpfly convert to-curl -name Login doc/examples/3_scripting.http
+httpfly convert to-curl -name Login docs/examples/3_scripting.http
 ```
 
 ### `help`

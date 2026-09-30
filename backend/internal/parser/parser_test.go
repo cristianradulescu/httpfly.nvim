@@ -6,11 +6,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cristianradulescu/httpfly/internal/httpfile"
+	"github.com/cristianradulescu/httpfly.nvim/backend/internal/httpfile"
 )
 
 func TestParseBasicExample(t *testing.T) {
-	f, err := os.Open("../../doc/examples/1_basic.http")
+	f, err := os.Open("../../../docs/examples/1_basic.http")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +99,7 @@ func TestParseNameFromSeparatorLine(t *testing.T) {
 
 // A "###"-prefixed line anywhere -- including inside a body -- starts a new
 // block, matching JetBrains HTTP Client's own behavior. This is a known,
-// accepted trade-off of the plain-text format (see doc/http-file-format.md),
+// accepted trade-off of the plain-text format (see docs/http-file-format.md),
 // not something httpfly tries to escape or detect.
 func TestParseHashHashHashInsideBodySplitsIntoNewBlock(t *testing.T) {
 	src := "###\n# @name Get\nPOST http://localhost:8080/post HTTP/1.1\n\n" +

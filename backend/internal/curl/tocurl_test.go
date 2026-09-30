@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cristianradulescu/httpfly/internal/httpfile"
+	"github.com/cristianradulescu/httpfly.nvim/backend/internal/httpfile"
 )
 
 func TestToCurlBasic(t *testing.T) {

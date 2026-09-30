@@ -1,7 +1,7 @@
 # .http File Format
 
-httpfly reads plain-text `.http` files in the REST Client / IntelliJ HTTP
-Client style: one or more requests, separated by `###`.
+`.http` files use the JetBrains HTTP Client / REST Client style: one or
+more requests, separated by `###`.
 
 ## Requests
 
@@ -28,9 +28,8 @@ A block is, in order:
    [local variable declarations](#variables).
 2. Exactly one request line: `METHOD URL` or `METHOD URL PROTO`. `PROTO`
    defaults to `HTTP/1.1` if omitted. The URL **must be absolute**
-   (`scheme://host[:port]/path`) — httpfly does not guess a scheme or
-   splice in a `Host` header the way some other HTTP-file tools do; write
-   the whole URL.
+   (`scheme://host[:port]/path`). No scheme is guessed and no `Host`
+   header is spliced in, so write the whole URL.
 3. Zero or more header lines: `Name: Value`.
 4. An optional blank line, then everything else in the block is the request
    body verbatim (leading/trailing blank lines trimmed; blank lines and
@@ -58,12 +57,13 @@ error (`metadata:name`) rather than one silently overwriting the other.
 
 | Key | Required | Scope | Meaning |
 |---|---|---|---|
-| `name` | **Yes** | request only | The request's identifier — used by `-name` on the CLI. Every request must have a non-empty `@name`, supplied either as `# @name Value` or as trailing text on the block's `###` separator line (see [above](#requests)); it's an error at file-prelude scope (there's no such thing as a "global name"). |
+| `name` | **Yes** | request only | The request's identifier. `:HttpSend` uses it to send the request under the cursor. Every request must have a non-empty `@name`, supplied either as `# @name Value` or as trailing text on the block's `###` separator line (see [above](#requests)); it's an error at file-prelude scope (there's no such thing as a "global name"). |
 | `lang` | No | request only | Names the scripting language for pre-/post-request scripts. `lua` is the only supported value (and the default if omitted); anything else is a warning and falls back to Lua. |
 | `proxy` | No | request or global | An absolute proxy URL (`scheme://host[:port]`) to send this request through. See [below](#proxy). |
+| `download` | No | request only | Save the response body to `.httpfly/downloads/` instead of showing it. `# @download` names the file after the URL's last path segment; `# @download name.ext` sets the name. See the [README](../README.md#downloading-files). |
 
-Any other `@key` is accepted but reported as an "unknown metadata" warning
-— it's recognized syntax, just not something httpfly currently acts on.
+Any other `@key` is accepted and ignored (`validate` reports it as a
+warning).
 
 ### `proxy`
 
@@ -129,13 +129,13 @@ GET http://localhost:8080/get?env={{env}} HTTP/1.1   # -> env=dev
 ```
 
 Precedence, highest to lowest: **local variable > persisted `client.global`
-(scripting) > `-env` environment variable > global (prelude) variable**.
+(scripting) > selected environment > global (prelude) variable**.
 See [Environments](environments.md) and [Scripting](scripting.md) for the
 middle two tiers.
 
-An `{{unknown}}` placeholder with no matching declaration is left as
-literal text in the output and reported as a warning — it doesn't stop the
-request from being parsed or sent.
+A request that still has an undefined `{{placeholder}}` when it's about
+to be sent isn't sent, and shows an error instead. A script in an earlier
+request may still define it, so this is only checked at send time.
 
 ### Variables referencing variables
 
@@ -160,9 +160,8 @@ an `ERROR`, since no later script could ever resolve it.
 ### Dynamic variables
 
 A few `{{$name}}` variables are built in and generated fresh for every
-occurrence, at the moment the request is resolved (so `validate` shows
-one value and `run` sends another, and two `{{$uuid}}` in one request are
-two different UUIDs). The names match JetBrains HTTP Client's:
+occurrence, at the moment the request is sent (two `{{$uuid}}` in one
+request are two different UUIDs). The names match JetBrains HTTP Client's:
 
 | Variable | Value |
 |---|---|
@@ -237,25 +236,19 @@ Content-Type: image/png
 A body whose `Content-Type` is any `multipart/*` type is sent with CRLF
 (`\r\n`) line endings regardless of how the `.http` file is saved, as
 RFC 2046 requires between parts and part headers — lenient servers
-accept bare LF, strict ones reject it, so httpfly normalizes the same way
+accept bare LF and strict ones reject it, so it's normalized the same way
 JetBrains HTTP Client and `curl -F` do. Bytes spliced in from a `< path`
 reference are never touched. Every other body is sent byte-for-byte as
 written.
 
-A relative path resolves against the current working directory — same
-rule as everything else httpfly reads from disk (see
-[Environments](environments.md)), not the `.http` file's own directory.
+A relative path resolves from the directory holding `http-client.env.json`
+(see [Environments](environments.md#where-its-found)), not necessarily the
+`.http` file's own directory.
 The path can itself use `{{var}}` interpolation (e.g. `< ./{{env}}/cert.pem`).
 
-A file that can't be read is a warning at `validate` time (a pre-request
-script might still create it before the request is actually sent — same
-reasoning as an undefined `{{variable}}`), escalated to a hard error by
-`run`/`convert to-curl` immediately before it's actually needed.
-`validate` only checks that the file can be opened; the bytes are read
-exactly once, by `run`, right before the request is sent.
-
-`convert from-curl`/`convert to-curl` understand this too — see
-[Usage](usage.md#convert-from-curl).
+The file is read once, right before the request is sent. If it can't be
+read then, the request isn't sent and shows an error. A pre-request script
+may create the file first.
 
 ## Comments
 
@@ -276,27 +269,26 @@ Two things are *not* comments:
 - Inside the body (everything after the blank line that ends the headers),
   a `#` line is body content and is sent as-is.
 - `# @key value` metadata placed among the headers is an `ERROR` — metadata
-  belongs before the request line. Ignoring a misplaced `# @name` silently
-  would leave the block unreachable via `-name`.
+  belongs before the request line. Silently ignoring a misplaced
+  `# @name` would leave the request without a name.
 
 ## Validation
 
-`httpfly validate` checks every block (see [Usage](usage.md#validate) for
-the report format). At a glance:
+A file with any `ERROR` isn't sent at all, and the error is shown in the
+result pane. `WARN` issues don't block sending. To list every issue in a
+file, run `bin/httpfly validate file.http` (see [Backend](backend.md#validate)).
 
 | Severity | Examples |
 |---|---|
 | `ERROR` (blocks the request / fails validation) | Missing or empty `@name`; the same `@name` used by more than one request in the file; a separator-line name that conflicts with an explicit `# @name` in the same block; request line that isn't `METHOD URL [PROTO]`; relative URL; malformed header line (no `:`); `@proxy` that isn't absolute; `@name`/`@lang` declared in the prelude; `# @key` metadata placed among the headers instead of before the request line; a malformed or unterminated script block; a script with invalid Lua syntax; a variable reference cycle (`@a = {{b}}`, `@b = {{a}}`). |
 | `WARN` (still usable, just worth knowing) | Unknown `@key`; non-standard HTTP method; unrecognized `PROTO` string; `@lang` set to something other than `lua`; undefined `{{variable}}`; a `< path/to/file` body reference that couldn't be read. |
 
-`doc/examples/invalid.http` in this repo demonstrates each of these, one
-issue per block — a good file to run `httpfly validate` against to see the
-report format.
+[`examples/invalid.http`](examples/invalid.http) demonstrates each of
+these, one issue per block.
 
 ## Scripting
 
 A request can carry a `< {% ... %}` (pre-request) and/or `> {% ... %}`
 (post-request) Lua script — for capturing an auth token from a response,
 reading a local file, or running a command. See [Scripting](scripting.md)
-for the full reference; `httpfly validate` only checks a script compiles,
-it never executes one.
+for the full reference.

@@ -3,7 +3,7 @@ package cli
 import (
 	"fmt"
 
-	"github.com/cristianradulescu/httpfly/internal/httpfile"
+	"github.com/cristianradulescu/httpfly.nvim/backend/internal/httpfile"
 )
 
 // selectRequests returns all of requests, or just the one named name if

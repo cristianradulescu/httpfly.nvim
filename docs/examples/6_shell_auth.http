@@ -5,11 +5,8 @@
 # etc.). generate-token.sh next to this file stands in for that: shell out
 # to it, capture its stdout, and use it as the request's token.
 #
-# cmd.exec runs relative to httpfly's own process cwd -- run this from
-# inside doc/examples/ so the plain relative path below resolves:
-#
-#   cd doc/examples
-#   httpfly run 6_shell_auth.http
+# cmd.exec runs relative to the directory holding http-client.env.json
+# (here, this one), so the plain relative path below resolves.
 #
 # Run `make httpbin-up` first.
 

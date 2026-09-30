@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/cristianradulescu/httpfly/internal/cli"
+	"github.com/cristianradulescu/httpfly.nvim/backend/internal/cli"
 )
 
 func main() {

@@ -8,8 +8,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/cristianradulescu/httpfly/internal/parser"
-	"github.com/cristianradulescu/httpfly/internal/state"
+	"github.com/cristianradulescu/httpfly.nvim/backend/internal/parser"
+	"github.com/cristianradulescu/httpfly.nvim/backend/internal/state"
 )
 
 func validateCommand(args []string, stdout, stderr io.Writer) error {

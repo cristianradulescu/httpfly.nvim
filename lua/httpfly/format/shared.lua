@@ -6,8 +6,8 @@ local M = {}
 -- "[", not "{" -- defensive against any stray non-JSON text before it
 -- (e.g. if `cmd` is ever invoked through something like npx that prints
 -- notices to stdout). httpfly itself keeps its stdout clean in -json
--- mode: since its post-v0.3.1 change a script's print(...) and flag-parsing errors both
--- go to stderr, which runner.lua shows separately.
+-- mode: a script's print(...) and flag-parsing errors both go to stderr,
+-- which runner.lua shows separately.
 function M.extract_json(text)
   local start = text:find("[", 1, true)
   if not start then

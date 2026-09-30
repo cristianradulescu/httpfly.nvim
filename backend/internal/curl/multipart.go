@@ -8,7 +8,7 @@ import (
 
 // multipartBoundary is the fixed boundary httpfly generates for a
 // converted multipart/form-data body -- same idea as the hand-written
-// "WebAppBoundary" in doc/examples/5_forms.http, just generated instead of
+// "WebAppBoundary" in docs/examples/5_forms.http, just generated instead of
 // chosen by hand.
 const multipartBoundary = "----HttpflyBoundary"
 
@@ -87,7 +87,7 @@ func formatFormFlagValue(p formPart) string {
 
 // formatMultipartBody renders parts as literal ".http" body text bounded
 // by boundary, matching the shape httpfly's own parser expects (and
-// doc/examples/5_forms.http demonstrates by hand): "--boundary" markers,
+// docs/examples/5_forms.http demonstrates by hand): "--boundary" markers,
 // a Content-Disposition line per part, and a file part's content spliced
 // in at send time via "< path" (see internal/parser's
 // spliceFileReferences) rather than inlined here.

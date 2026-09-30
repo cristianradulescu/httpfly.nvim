@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/cristianradulescu/httpfly/internal/env"
+	"github.com/cristianradulescu/httpfly.nvim/backend/internal/env"
 )
 
 // chdir switches the process's working directory to dir for the duration

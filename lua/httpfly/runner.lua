@@ -98,8 +98,8 @@ local function present(buf, cwd, cmd_str, lines, truncations, highlights, raw_fa
 end
 
 -- appends httpfly's stderr to already-rendered `lines`, if there is any.
--- Since httpfly's post-v0.3.1 change a script's print(...) writes to stderr (never
--- stdout, which stays pure JSON), so this is where a script's debugging
+-- A script's print(...) writes to stderr (never stdout, which stays pure
+-- JSON), so this is where a script's debugging
 -- output shows up -- it must be shown even on a successful (exit 0) run,
 -- unlike the raw fallback below, which only shows stderr on failure
 local function append_stderr(lines, highlights, stderr)

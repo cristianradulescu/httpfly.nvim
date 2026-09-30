@@ -3,7 +3,7 @@ package curl
 import (
 	"strings"
 
-	"github.com/cristianradulescu/httpfly/internal/httpfile"
+	"github.com/cristianradulescu/httpfly.nvim/backend/internal/httpfile"
 )
 
 // ToCurl renders req as a multi-line, bash-style curl command -- the

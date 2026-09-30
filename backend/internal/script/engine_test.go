@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cristianradulescu/httpfly/internal/client"
+	"github.com/cristianradulescu/httpfly.nvim/backend/internal/client"
 )
 
 func TestRunPreScriptSetsAndGetsGlobal(t *testing.T) {

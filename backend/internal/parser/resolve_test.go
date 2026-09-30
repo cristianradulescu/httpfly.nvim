@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cristianradulescu/httpfly/internal/httpfile"
+	"github.com/cristianradulescu/httpfly.nvim/backend/internal/httpfile"
 )
 
 // chdir switches the process's working directory to dir for the duration

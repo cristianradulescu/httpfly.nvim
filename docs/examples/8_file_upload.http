@@ -1,11 +1,10 @@
 # Sending a file's exact bytes as the body -- a "< path" line (JetBrains
 # HTTP Client's own convention) is replaced with that file's raw content
 # at send time, byte-for-byte, no pre-request script needed. See
-# doc/http-file-format.md's "File uploads" section.
+# docs/http-file-format.md's "File uploads" section.
 #
-# A relative path resolves against the current working directory (same
-# rule as everywhere else httpfly reads from disk) -- run this from inside
-# doc/examples/, where 8_photo.png sits.
+# A relative path resolves against the directory holding
+# http-client.env.json (here, this one, where 8_photo.png sits).
 #
 # Run `make httpbin-up` first.
 

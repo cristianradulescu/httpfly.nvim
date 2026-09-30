@@ -4,19 +4,12 @@
 #
 # Run `make httpbin-up` first. Each request resolves its {{var}} placeholders
 # right before it's sent, using whatever client.global currently holds -- so
-# this works either way:
-#
-#   httpfly run doc/examples/3_scripting.http                      # both at once
-#
-# or, e.g. if you only want to re-authenticate occasionally rather than on
-# every run:
-#
-#   httpfly run -name Login doc/examples/3_scripting.http
-#   httpfly run -name AuthenticatedRequest doc/examples/3_scripting.http
+# this works either way: :HttpSendAll sends both at once, or :HttpSend on
+# Login once and then on AuthenticatedRequest as often as you like.
 #
 # Either way, AuthenticatedRequest's {{auth_token}} is whatever Login's
-# post-request script most recently set (persisted in .httpfly/state.json).
-# See doc/scripting.md. See 4_download.http for saving a binary response
+# post-request script most recently set (persisted in .httpfly/state.json;
+# :HttpSessionClear resets it). See docs/scripting.md. See 4_download.http for saving a binary response
 # to a file, 6_shell_auth.http for shelling out to an external command in
 # a pre-request script instead of an HTTP call, and 7_save_response.http
 # for saving a response body yourself from a post-request script.
