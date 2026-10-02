@@ -80,6 +80,23 @@ func TestLoadMissingFile(t *testing.T) {
 	}
 }
 
+func TestLoadPrivateFileWithoutPublicFile(t *testing.T) {
+	dir := t.TempDir()
+	writePrivateEnvFile(t, dir, `{
+		"$shared": {"timeout": "30"},
+		"local": {"host": "http://localhost:1234"}
+	}`)
+
+	vars, err := Load(dir, "local")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	want := map[string]string{"host": "http://localhost:1234", "timeout": "30"}
+	if !reflect.DeepEqual(vars, want) {
+		t.Errorf("vars = %+v, want %+v", vars, want)
+	}
+}
+
 func TestLoadUnknownEnvironmentListsAvailable(t *testing.T) {
 	dir := t.TempDir()
 	writeEnvFile(t, dir, `{

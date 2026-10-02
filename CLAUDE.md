@@ -64,14 +64,17 @@ The backend resolves `http-client.env.json`, the optional sibling
 (`< file` bodies, `cmd.exec`) against its process's **current working
 directory only** — it does no upward search. The plugin does the upward
 search: `env.lua`'s `find_env_dir()` walks up from the `.http` file's
-directory for `http-client.env.json` (`vim.fs.find(..., { upward = true })`),
+directory for the nearest directory holding `http-client.env.json` *or*
+`http-client.private.env.json` (`vim.fs.find({...}, { upward = true })`),
 and `env.resolve_cwd()` returns that directory — or the `.http` file's own
 directory if none is found — as the `cwd` httpfly always runs with. So one
 env file at a project root serves `.http` files nested any depth below it,
 a closer env file shadows it for its subtree, and `.httpfly/` (state,
 history, downloads) is shared by everything under the env file's
-directory. The private file is always expected next to the public one,
-never searched for independently.
+directory. Both files are read from that one directory; either may be
+missing (the backend errors only if both are). `env_file_for_buf()`
+returns the public file's path there even if it doesn't exist — it's the
+key the selected environment is stored under.
 
 ## Architecture
 

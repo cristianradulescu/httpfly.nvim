@@ -31,7 +31,8 @@ environment names, plus one optional reserved key, `$shared`:
 ## Where it's found
 
 The plugin searches upward from the `.http` file's directory for
-`http-client.env.json` and uses the first one it finds. That lets one
+`http-client.env.json` (or `http-client.private.env.json`, see below) and
+uses the first directory that has either. That lets one
 file at a project root serve `.http` files nested any depth below it
 (`v1/login.http`, `v2/login.http`, ...). A subtree that needs different
 environments can keep its own `http-client.env.json`, which then applies
@@ -44,8 +45,8 @@ The directory holding that file is also where these live:
 - `.httpfly/history/` and `.httpfly/downloads/`
 - the base for relative paths in `< file` bodies and `cmd.exec`
 
-If no `http-client.env.json` exists anywhere above the file, the `.http`
-file's own directory is used for all of the above.
+If neither file exists anywhere above the file, the `.http` file's own
+directory is used for all of the above.
 
 ## Keeping secrets out of the committed file
 
@@ -67,7 +68,9 @@ tokens, or a local-only environment. It has the same shape:
 - Its values override the public file's key by key.
 - It can define environments the public file doesn't have (like `local`
   above).
-- It's optional. Add it to your `.gitignore`:
+- It's optional, and so is the public file: a directory with only
+  `http-client.private.env.json` works on its own.
+- Add it to your `.gitignore`:
 
   ```
   http-client.private.env.json

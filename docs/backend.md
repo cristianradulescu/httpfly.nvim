@@ -23,7 +23,8 @@ bin/httpfly run -json [-env E] [-timeout D] [-download F] [-name X] <file.http>
 - `# @download [name]` becomes `-download .httpfly/downloads/<name>`, and
   the plugin creates that directory first.
 - The working directory is the nearest directory at or above the `.http`
-  file that contains `http-client.env.json`, or the `.http` file's own
+  file that contains `http-client.env.json` or
+  `http-client.private.env.json`, or the `.http` file's own
   directory if there isn't one. httpfly finds `http-client.env.json`,
   `http-client.private.env.json` and `.httpfly/state.json` in its working
   directory, and resolves relative paths (`< file` bodies, `cmd.exec`)

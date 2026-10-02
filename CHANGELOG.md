@@ -27,6 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A script's `print(...)` output is shown in its own `stderr` section of
   the result pane, even when the send succeeds.
 - A post-request script error is labelled `script error:`.
+- `http-client.private.env.json` works without `http-client.env.json`:
+  the plugin finds the nearest directory with either file, and selecting
+  an environment no longer fails when only the private file exists.
 
 ### Added
 

@@ -23,6 +23,14 @@ local function read_json(path)
   return decoded
 end
 
+local function no_env_file_msg()
+  return "httpfly: no "
+    .. config.options.env_file
+    .. " or "
+    .. config.options.private_env_file
+    .. " found for this file"
+end
+
 local function dir_for_buf(bufnr)
   return vim.fn.fnamemodify(vim.api.nvim_buf_get_name(bufnr), ":h")
 end
@@ -38,14 +46,14 @@ end
 -- a real `httpfly run` from a subdir wouldn't see the root env file at
 -- all. When no env file is found anywhere upward, cwd falls back to the
 -- .http file's own directory, matching the plugin's previous behavior.
--- Only the public file (config.options.env_file) is searched for here --
--- the optional private overlay (config.options.private_env_file) is
--- always looked for alongside whichever directory this search finds,
--- never on its own (matching httpfly's own env.Load, which requires the
--- public file to exist and treats the private one as an optional sibling
--- in that same directory).
+-- The closest directory holding either the public file
+-- (config.options.env_file) or the private one
+-- (config.options.private_env_file) wins, and both are then read from
+-- that one directory -- either may be missing, as long as one exists
+-- (matching httpfly's own env.Load).
 local function find_env_dir(dir)
-  local found = vim.fs.find(config.options.env_file, { path = dir, upward = true })[1]
+  local names = { config.options.env_file, config.options.private_env_file }
+  local found = vim.fs.find(names, { path = dir, upward = true })[1]
   if not found then
     return nil
   end
@@ -104,6 +112,9 @@ local function merge_env(vars, public, private, name)
   apply(private, name)
 end
 
+-- the public env file's path in the directory find_env_dir() found -- it
+-- may not exist itself (only the private file might), but it's still the
+-- key the selected environment is stored under
 function M.env_file_for_buf(bufnr)
   bufnr = bufnr or 0
   local dir = dir_for_buf(bufnr)
@@ -114,10 +125,9 @@ function M.env_file_for_buf(bufnr)
   return env_dir .. "/" .. config.options.env_file
 end
 
--- the optional private overlay's path, alongside the public env file found
--- by env_file_for_buf() -- nil under the same conditions env_file_for_buf()
--- returns nil (no public env file found upward), since httpfly itself
--- never looks for the private file without the public one existing first.
+-- the private overlay's path, alongside the public one from
+-- env_file_for_buf() -- nil under the same conditions (neither file found
+-- upward).
 function M.private_env_file_for_buf(bufnr)
   bufnr = bufnr or 0
   local dir = dir_for_buf(bufnr)
@@ -129,7 +139,7 @@ function M.private_env_file_for_buf(bufnr)
 end
 
 -- the directory httpfly itself must be launched with as cwd for this
--- buffer: the directory containing the env file found via the upward
+-- buffer: the directory containing the env file(s) found via the upward
 -- search above, or the .http file's own directory if none was found.
 -- runner.lua uses this same directory for -- and only for -- vim.system's
 -- cwd, so http-client.env.json (plus its optional private overlay) and
@@ -152,7 +162,7 @@ end
 function M.set(name, bufnr)
   local env_file = M.env_file_for_buf(bufnr)
   if not env_file then
-    vim.notify("httpfly: no " .. config.options.env_file .. " found for this file", vim.log.levels.WARN)
+    vim.notify(no_env_file_msg(), vim.log.levels.WARN)
     return
   end
   selected[env_file] = name
@@ -314,13 +324,13 @@ function M.pick(bufnr)
   bufnr = bufnr or 0
   local env_file = M.env_file_for_buf(bufnr)
   if not env_file then
-    vim.notify("httpfly: no " .. config.options.env_file .. " found for this file", vim.log.levels.WARN)
+    vim.notify(no_env_file_msg(), vim.log.levels.WARN)
     return
   end
 
   local names = read_env_names(read_json(env_file), read_json(M.private_env_file_for_buf(bufnr)))
   if #names == 0 then
-    vim.notify("httpfly: no environments found in " .. env_file, vim.log.levels.WARN)
+    vim.notify("httpfly: no environments found in " .. vim.fn.fnamemodify(env_file, ":h"), vim.log.levels.WARN)
     return
   end
 
