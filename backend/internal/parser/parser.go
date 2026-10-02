@@ -158,7 +158,10 @@ func parseMetadata(line string) (key, value string, ok bool) {
 	return key, value, true
 }
 
-var variablePattern = regexp.MustCompile(`^@([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$`)
+// variablePattern's name syntax matches interpolate's placeholderPattern
+// (minus the "$" of dynamic variables), so every declared name can be
+// referenced as "{{name}}".
+var variablePattern = regexp.MustCompile(`^@([A-Za-z_][A-Za-z0-9_.-]*)\s*=\s*(.*)$`)
 
 // parseVariableDef recognizes "@key=value" lines.
 func parseVariableDef(line string) (name, value string, ok bool) {

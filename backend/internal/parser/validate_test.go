@@ -176,6 +176,27 @@ func TestAnalyzeUndefinedVariableWarns(t *testing.T) {
 	}
 }
 
+func TestAnalyzeAcceptsHyphensAndDotsInVariableNames(t *testing.T) {
+	src := "@api-key = secret\n@api.host = http://localhost:8080\n\n###\n# @name Get\nGET {{api.host}}/get HTTP/1.1\nX-Api-Key: {{api-key}}\n"
+	result, err := Analyze(strings.NewReader(src))
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	if result.HasErrors() {
+		t.Fatalf("HasErrors() = true, want false: %+v", result.Blocks)
+	}
+	if want, got := map[string]string{"api-key": "secret", "api.host": "http://localhost:8080"}, result.Variables; !reflect.DeepEqual(want, got) {
+		t.Errorf("Variables = %+v, want %+v", got, want)
+	}
+	req := result.Blocks[0].Request
+	if want := "http://localhost:8080/get"; req.URL != want {
+		t.Errorf("URL = %q, want %q", req.URL, want)
+	}
+	if want := "secret"; req.Headers[0].Value != want {
+		t.Errorf("header = %q, want %q", req.Headers[0].Value, want)
+	}
+}
+
 func TestAnalyzeResolvesFileScopedVariables(t *testing.T) {
 	src := "@host = http://localhost:8080\n@greeting = hello\n\n###\n# @name Get\nGET {{host}}/get?greeting={{greeting}} HTTP/1.1\nAuthorization: Bearer {{host}}\n"
 	result, err := Analyze(strings.NewReader(src))

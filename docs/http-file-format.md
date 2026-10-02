@@ -133,6 +133,11 @@ declare variables:
 GET {{host}}/get?greeting={{greeting}} HTTP/1.1
 ```
 
+A variable name starts with a letter or `_`, followed by letters, digits,
+`_`, `-` or `.` — `api_key`, `api-key` and `api.key` are all valid (and
+distinct). The same rule applies to names from environment files and
+scripts; a name that doesn't follow it can't be referenced as `{{name}}`.
+
 ### Prelude: global vs. local
 
 An `@key = value` line before the first `###` declares a **global**

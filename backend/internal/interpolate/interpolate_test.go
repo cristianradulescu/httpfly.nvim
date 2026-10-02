@@ -29,6 +29,26 @@ func TestApplyLeavesUnknownPlaceholdersAndReportsThem(t *testing.T) {
 	}
 }
 
+func TestApplyAcceptsHyphensAndDotsInNames(t *testing.T) {
+	got, missing, _ := Apply("{{api-key}} {{api.host}} {{ a-b.c }}", map[string]string{"api-key": "k", "api.host": "h", "a-b.c": "x"})
+	if want := "k h x"; got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+	if len(missing) != 0 {
+		t.Errorf("missing = %v, want none", missing)
+	}
+}
+
+func TestApplyReportsUndefinedHyphenatedName(t *testing.T) {
+	got, missing, _ := Apply("{{api-key}}", nil)
+	if want := "{{api-key}}"; got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+	if want := []string{"api-key"}; !reflect.DeepEqual(missing, want) {
+		t.Errorf("missing = %v, want %v (must be reported, not passed through silently)", missing, want)
+	}
+}
+
 func TestApplyNoPlaceholders(t *testing.T) {
 	got, missing, _ := Apply("plain text", nil)
 	if got != "plain text" || len(missing) != 0 {

@@ -52,6 +52,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   previously `:HttpSend` could silently send the wrong one.
 - Bodies with CRLF line endings no longer show a trailing `^M` on every
   line in the result pane.
+- Variable names may contain `-` and `.` (`{{api-key}}`, `{{api.host}}`),
+  as in JetBrains HTTP Client, in env files, `@key = value` lines and
+  `client.global`. Previously such a placeholder was sent as literal text
+  without being reported as undefined.
 
 ### Removed
 

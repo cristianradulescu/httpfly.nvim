@@ -19,8 +19,11 @@ import (
 // placeholderPattern matches "{{name}}" -- a declared variable, or, with a
 // leading "$", one of the dynamicVars below. A "$"-name is matched here
 // specifically so an unsupported one ("{{$nope}}") is reported as
-// undefined rather than passed through to the wire as literal text.
-var placeholderPattern = regexp.MustCompile(`\{\{\s*(\$?[A-Za-z_][A-Za-z0-9_]*)\s*\}\}`)
+// undefined rather than passed through to the wire as literal text. Names
+// may contain "-" and "." after the first character, as in JetBrains HTTP
+// Client ("{{api-key}}", "{{api.host}}"); this must accept at least every
+// name the parser's "@key = value" pattern does.
+var placeholderPattern = regexp.MustCompile(`\{\{\s*(\$?[A-Za-z_][A-Za-z0-9_.-]*)\s*\}\}`)
 
 // dynamicVars are the built-in "{{$name}}" variables, generated fresh for
 // every occurrence at the moment of substitution (so two "{{$uuid}}" in
