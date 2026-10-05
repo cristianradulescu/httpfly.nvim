@@ -3,6 +3,8 @@ package curl
 import (
 	"strings"
 	"testing"
+
+	"github.com/cristianradulescu/httpfly.nvim/backend/internal/httpfile"
 )
 
 func TestParseSimpleGet(t *testing.T) {
@@ -97,6 +99,20 @@ func TestParseProxyFlag(t *testing.T) {
 	}
 	if req.Proxy != "http://localhost:3128" {
 		t.Errorf("Proxy = %q", req.Proxy)
+	}
+}
+
+func TestParseCertificateFlags(t *testing.T) {
+	req, warnings, err := Parse(`curl 'https://example.com' -E client.pem --key client.key --cacert ca.pem`)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if len(warnings) > 0 {
+		t.Errorf("warnings = %v, want none", warnings)
+	}
+	want := httpfile.Certificates{ClientCertificate: "client.pem", ClientCertificateKey: "client.key", CACertificate: "ca.pem"}
+	if req.Certs != want {
+		t.Errorf("Certs = %+v, want %+v", req.Certs, want)
 	}
 }
 

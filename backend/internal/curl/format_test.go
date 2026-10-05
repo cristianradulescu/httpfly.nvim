@@ -50,6 +50,20 @@ func TestFormatWithProxy(t *testing.T) {
 	}
 }
 
+func TestFormatWithCertificates(t *testing.T) {
+	req := httpfile.Request{
+		Name:   "Get",
+		Method: "GET",
+		URL:    "https://example.com",
+		Certs:  httpfile.Certificates{ClientCertificate: "client.pem", ClientCertificateKey: "client.key", CACertificate: "ca.pem"},
+	}
+	got := Format(req)
+	want := "# @clientCertificate client.pem\n# @clientCertificateKey client.key\n# @caCertificate ca.pem\nGET "
+	if !strings.Contains(got, want) {
+		t.Errorf("got %q, want it to contain %q", got, want)
+	}
+}
+
 func TestFormatDefaultsProtoWhenUnset(t *testing.T) {
 	req := httpfile.Request{Name: "Get", Method: "GET", URL: "https://example.com"}
 	got := Format(req)

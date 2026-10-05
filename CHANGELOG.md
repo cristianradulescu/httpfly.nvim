@@ -12,6 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Multiline URLs: indented lines starting with `/`, `?` or `&` right after
   the request line are appended to its URL, JetBrains HTTP Client style,
   so a long URL can be split one path segment or query parameter per line.
+- TLS certificates per request: `# @clientCertificate`,
+  `# @clientCertificateKey` and `# @caCertificate` (PEM paths) are the
+  equivalents of curl's `--cert`, `--key` and `--cacert`, for mutual TLS
+  and servers with a private CA. `convert from-curl`/`to-curl` map them
+  to and from those curl flags.
 
 ### Changed
 

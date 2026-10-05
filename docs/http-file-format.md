@@ -86,6 +86,9 @@ always sent exactly as written.
 | `name` | **Yes** | request only | The request's identifier. `:HttpSend` uses it to send the request under the cursor. Every request must have a non-empty `@name`, supplied either as `# @name Value` or as trailing text on the block's `###` separator line (see [above](#requests)); it's an error at file-prelude scope (there's no such thing as a "global name"). |
 | `lang` | No | request only | Names the scripting language for pre-/post-request scripts. `lua` is the only supported value (and the default if omitted); anything else is a warning and falls back to Lua. |
 | `proxy` | No | request or global | An absolute proxy URL (`scheme://host[:port]`) to send this request through. See [below](#proxy). |
+| `clientCertificate` | No | request only | A PEM client certificate to present to the server (mutual TLS). See [below](#tls-certificates). |
+| `clientCertificateKey` | No | request only | The PEM private key for `clientCertificate`, if it's in a separate file. |
+| `caCertificate` | No | request only | A PEM CA certificate to trust, in addition to the system's, when verifying the server. |
 | `download` | No | request only | Save the response body to `.httpfly/downloads/` instead of showing it. `# @download` names the file after the URL's last path segment; `# @download name.ext` sets the name. See the [README](../README.md#downloading-files). |
 
 Any other `@key` is accepted and ignored (`validate` reports it as a
@@ -116,6 +119,40 @@ There's currently no way to opt a single request *out* of a global proxy
 back to a direct connection — `# @proxy` with no value is a validation
 error, not "no proxy." If you need that, don't declare `@proxy` globally;
 add it to each request that needs it instead.
+
+### TLS certificates
+
+```http
+###
+# @name GetWithClientCert
+# @clientCertificate certs/client.pem
+# @clientCertificateKey certs/client.key
+# @caCertificate certs/ca.pem
+GET https://internal.example.com/api HTTP/1.1
+```
+
+The equivalent of curl's `--cert`, `--key` and `--cacert`. The names of the
+first two follow JetBrains HTTP Client's `SSLConfiguration`, but here
+they're per-request metadata rather than environment-file settings;
+`caCertificate` has no JetBrains equivalent.
+
+- `@clientCertificate` is presented when the server asks for a client
+  certificate. If the file contains the private key too, leave out
+  `@clientCertificateKey`; `@clientCertificateKey` on its own is an error.
+- `@caCertificate` is trusted *on top of* the system's root CAs, for a
+  server whose certificate is signed by a private CA.
+- All three must be PEM files. Passphrase-protected keys and P12/DER files
+  aren't supported.
+- Paths can use `{{variables}}` (e.g. a `certDir` from the
+  [environment](environments.md)). A relative path resolves from the
+  directory holding `http-client.env.json` (see
+  [Environments](environments.md#where-its-found)), not necessarily the
+  `.http` file's own directory.
+- A file that can't be read is a warning in `validate` and an error when
+  the request is sent.
+
+See [`examples/9_tls_certificates.http`](examples/9_tls_certificates.http)
+for more combinations (it uses placeholder paths, so it isn't runnable as-is).
 
 ## Variables
 
@@ -311,8 +348,8 @@ file, run `bin/httpfly validate file.http` (see [Backend](backend.md#validate)).
 
 | Severity | Examples |
 |---|---|
-| `ERROR` (blocks the request / fails validation) | Missing or empty `@name`; the same `@name` used by more than one request in the file; a separator-line name that conflicts with an explicit `# @name` in the same block; request line that isn't `METHOD URL [PROTO]`; relative URL; malformed header line (no `:`); `@proxy` that isn't absolute; `@name`/`@lang` declared in the prelude; `# @key` metadata placed among the headers instead of before the request line; a malformed or unterminated script block; a script with invalid Lua syntax; a variable reference cycle (`@a = {{b}}`, `@b = {{a}}`). |
-| `WARN` (still usable, just worth knowing) | Unknown `@key`; non-standard HTTP method; unrecognized `PROTO` string; `@lang` set to something other than `lua`; undefined `{{variable}}`; a `< path/to/file` body reference that couldn't be read. |
+| `ERROR` (blocks the request / fails validation) | Missing or empty `@name`; the same `@name` used by more than one request in the file; a separator-line name that conflicts with an explicit `# @name` in the same block; request line that isn't `METHOD URL [PROTO]`; relative URL; malformed header line (no `:`); `@proxy` that isn't absolute; `@name`/`@lang`/certificate metadata declared in the prelude; `@clientCertificateKey` without `@clientCertificate`; `# @key` metadata placed among the headers instead of before the request line; a malformed or unterminated script block; a script with invalid Lua syntax; a variable reference cycle (`@a = {{b}}`, `@b = {{a}}`). |
+| `WARN` (still usable, just worth knowing) | Unknown `@key`; non-standard HTTP method; unrecognized `PROTO` string; `@lang` set to something other than `lua`; undefined `{{variable}}`; a `< path/to/file` body reference or certificate file that couldn't be read. |
 
 [`examples/invalid.http`](examples/invalid.http) demonstrates each of
 these, one issue per block.

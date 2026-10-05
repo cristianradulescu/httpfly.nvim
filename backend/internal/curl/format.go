@@ -18,6 +18,15 @@ func Format(req httpfile.Request) string {
 	if req.Proxy != "" {
 		fmt.Fprintf(&b, "# @proxy %s\n", req.Proxy)
 	}
+	if req.Certs.ClientCertificate != "" {
+		fmt.Fprintf(&b, "# @clientCertificate %s\n", req.Certs.ClientCertificate)
+	}
+	if req.Certs.ClientCertificateKey != "" {
+		fmt.Fprintf(&b, "# @clientCertificateKey %s\n", req.Certs.ClientCertificateKey)
+	}
+	if req.Certs.CACertificate != "" {
+		fmt.Fprintf(&b, "# @caCertificate %s\n", req.Certs.CACertificate)
+	}
 
 	proto := req.Proto
 	if proto == "" {

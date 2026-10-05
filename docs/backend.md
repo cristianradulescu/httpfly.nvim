@@ -146,7 +146,8 @@ arguments (including headers with embedded quotes, colons, or commas —
 common in real captured requests, e.g. `sec-ch-ua`, `if-none-match`).
 `-H`/`--header` become header lines; `-b`/`--cookie` becomes a `Cookie`
 header; `-u`/`--user` becomes a Basic `Authorization` header; `-x`/`--proxy`
-becomes `@proxy`; `-d`/`--data*` becomes the body (and infers `POST` if no
+becomes `@proxy`; `-E`/`--cert`, `--key` and `--cacert` become
+`@clientCertificate`, `@clientCertificateKey` and `@caCertificate`; `-d`/`--data*` becomes the body (and infers `POST` if no
 explicit `-X` is given, matching curl's own rule). A flag with no httpfly
 equivalent (`-k`/`--insecure`, `-o`/`--output`) is dropped with a warning
 printed to stderr — the generated `.http` file on stdout is never polluted
@@ -194,7 +195,8 @@ there's no later chance for a script to fill it in.
 
 `Method` is always emitted explicitly via `-X` (even for `GET`), headers
 become `-H 'Name: Value'` in their original order, `Body` becomes
-`--data-raw`, and `@proxy` becomes `-x`. A `Cookie` or Basic-auth
+`--data-raw`, `@proxy` becomes `-x`, and the certificate metadata becomes
+`--cert`/`--key`/`--cacert`. A `Cookie` or Basic-auth
 `Authorization` header is emitted as a plain header, not un-mapped back
 into `-b`/`-u` — equally valid curl, without guessing intent.
 

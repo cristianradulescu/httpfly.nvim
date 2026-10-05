@@ -50,6 +50,15 @@ func ToCurl(req httpfile.Request) string {
 	if req.Proxy != "" {
 		lines = append(lines, "-x "+shellQuote(req.Proxy))
 	}
+	if req.Certs.ClientCertificate != "" {
+		lines = append(lines, "--cert "+shellQuote(req.Certs.ClientCertificate))
+	}
+	if req.Certs.ClientCertificateKey != "" {
+		lines = append(lines, "--key "+shellQuote(req.Certs.ClientCertificateKey))
+	}
+	if req.Certs.CACertificate != "" {
+		lines = append(lines, "--cacert "+shellQuote(req.Certs.CACertificate))
+	}
 
 	switch {
 	case isMultipart:

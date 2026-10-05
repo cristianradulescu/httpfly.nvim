@@ -22,6 +22,7 @@ var flagsWithValue = map[string]bool{
 	"e": true, "referer": true,
 	"u": true, "user": true,
 	"x": true, "proxy": true,
+	"E": true, "cert": true, "key": true, "cacert": true,
 	"o": true, "output": true,
 }
 
@@ -41,7 +42,7 @@ var ignoredNoValueFlags = map[string]bool{
 }
 
 // Parse converts a bash-style "curl ..." command into an httpfly request.
-// Only Method, URL, Headers, Body, and Proxy are populated -- Name and
+// Only Method, URL, Headers, Body, Proxy, and Certs are populated -- Name and
 // Proto are the caller's responsibility. warnings describes any flag that
 // was recognized but ignored (unsupported, or with no httpfly equivalent);
 // they don't prevent a request from being produced.
@@ -153,6 +154,12 @@ func Parse(cmd string) (httpfile.Request, []string, error) {
 			addHeader(&req, &warnings, "Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(value)))
 		case "x", "proxy":
 			req.Proxy = value
+		case "E", "cert":
+			req.Certs.ClientCertificate = value
+		case "key":
+			req.Certs.ClientCertificateKey = value
+		case "cacert":
+			req.Certs.CACertificate = value
 		case "I", "head":
 			if explicitMethod == "" {
 				explicitMethod = "HEAD"

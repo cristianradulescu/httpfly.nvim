@@ -64,8 +64,8 @@ func IsUndefinedVariableIssue(issue Issue) bool {
 const missingFilePrefix = "could not read file "
 
 // IsMissingFileIssue reports whether issue is the "could not read file"
-// warning spliceFileReferences emits for a "< path/to/file" body reference
-// that couldn't be read. Like IsUndefinedVariableIssue, a caller
+// warning emitted for a "< path/to/file" body reference (or a certificate
+// file metadata path) that couldn't be read. Like IsUndefinedVariableIssue, a caller
 // re-resolving right before actually sending a request may want to treat
 // this as fatal even though Analyze only ever reports it as a warning --
 // the file might not exist yet at validate/parse time but still get
@@ -239,12 +239,20 @@ func (s metadataScope) String() string {
 var localOnlyMetadata = map[string]bool{
 	"name": true, // the per-request identifier -- there's no sensible "global name"
 	"lang": true, // names the language of *this* block's inline script
+	// TLS certificate files are per-request, so it's explicit which
+	// requests present a client certificate.
+	"clientCertificate":    true,
+	"clientCertificateKey": true,
+	"caCertificate":        true,
 }
 
 // knownMetadataKeys are the keys validateMetadata gives special handling to.
 // Anything else is "unknown metadata" regardless of scope, so scope isn't
 // enforced for it beyond that existing warning.
-var knownMetadataKeys = map[string]bool{"name": true, "lang": true, "proxy": true}
+var knownMetadataKeys = map[string]bool{
+	"name": true, "lang": true, "proxy": true,
+	"clientCertificate": true, "clientCertificateKey": true, "caCertificate": true,
+}
 
 // parsePrelude parses the file segment before the first "###": "@key = value"
 // lines become global variables, "# @key value" lines become global
@@ -437,6 +445,19 @@ func validateBlock(lines []string, globalVars, globalMetadata map[string]string)
 	}
 	req.RawProxy = rawProxy
 
+	req.RawCerts = httpfile.Certificates{
+		ClientCertificate:    localMetadata["clientCertificate"],
+		ClientCertificateKey: localMetadata["clientCertificateKey"],
+		CACertificate:        localMetadata["caCertificate"],
+	}
+	if req.RawCerts.ClientCertificateKey != "" && req.RawCerts.ClientCertificate == "" {
+		issues = append(issues, Issue{
+			Element:  "metadata:clientCertificateKey",
+			Severity: SeverityError,
+			Message:  "@clientCertificateKey requires @clientCertificate",
+		})
+	}
+
 	bodyLines, postScript, postIssues := extractPostScript(lines[i:])
 	issues = append(issues, postIssues...)
 	if postScript != "" {
@@ -453,10 +474,10 @@ func validateBlock(lines []string, globalVars, globalMetadata map[string]string)
 }
 
 // Resolve interpolates req's still-templated fields (RawURL, RawHeaders,
-// RawBody, RawProxy) against vars, returning a copy with URL, Headers,
-// Body, and Proxy filled in, plus any issues found while doing so
-// (undefined variables, or a URL/proxy that still isn't absolute once
-// resolved). Method, Proto, and every other field are copied through
+// RawBody, RawProxy, RawCerts) against vars, returning a copy with URL,
+// Headers, Body, Proxy, and Certs filled in, plus any issues found while
+// doing so (undefined variables, a URL/proxy that still isn't absolute
+// once resolved, or a certificate file that can't be opened). Method, Proto, and every other field are copied through
 // unchanged.
 //
 // Analyze calls this once per block, using the variables known at parse
@@ -529,6 +550,10 @@ func resolve(req httpfile.Request, vars map[string]string, readFiles bool) (http
 	resolvedProxy, proxyIssues := resolveProxy(req.RawProxy, vars)
 	req.Proxy = resolvedProxy
 	issues = append(issues, proxyIssues...)
+
+	req.Certs.ClientCertificate = resolveCertificatePath("clientCertificate", req.RawCerts.ClientCertificate, vars, &issues)
+	req.Certs.ClientCertificateKey = resolveCertificatePath("clientCertificateKey", req.RawCerts.ClientCertificateKey, vars, &issues)
+	req.Certs.CACertificate = resolveCertificatePath("caCertificate", req.RawCerts.CACertificate, vars, &issues)
 
 	return req, issues
 }
@@ -655,6 +680,11 @@ func validateMetadata(key, value string) []Issue {
 	case "proxy":
 		if value == "" {
 			return []Issue{{Element: "metadata:proxy", Severity: SeverityError, Message: "@proxy requires a value"}}
+		}
+		return nil
+	case "clientCertificate", "clientCertificateKey", "caCertificate":
+		if value == "" {
+			return []Issue{{Element: "metadata:" + key, Severity: SeverityError, Message: fmt.Sprintf("@%s requires a value", key)}}
 		}
 		return nil
 	default:
@@ -786,6 +816,33 @@ func resolveProxy(rawProxy string, vars map[string]string) (string, []Issue) {
 	}
 
 	return resolved, issues
+}
+
+// resolveCertificatePath interpolates a certificate file path declared as
+// "@key" and checks the file can be opened -- a missing-file warning, like
+// a "< path" body reference, since a pre-request script might still create
+// it (see IsMissingFileIssue). The file's contents are left for the client
+// to load. A relative path resolves against the current working directory.
+func resolveCertificatePath(key, rawPath string, vars map[string]string, issues *[]Issue) string {
+	if rawPath == "" {
+		return ""
+	}
+	element := "metadata:" + key
+	resolved, missing, cycles := interpolate.Apply(rawPath, vars)
+	for _, name := range missing {
+		*issues = append(*issues, undefinedVariableIssue(element, name))
+	}
+	*issues = append(*issues, cycleIssues(element, cycles)...)
+	if len(missing) == 0 && len(cycles) == 0 {
+		if _, err := readOrProbe(resolved, false); err != nil {
+			*issues = append(*issues, Issue{
+				Element:  element,
+				Severity: SeverityWarning,
+				Message:  fmt.Sprintf("%s%q: %v", missingFilePrefix, resolved, err),
+			})
+		}
+	}
+	return resolved
 }
 
 func hasError(issues []Issue) bool {

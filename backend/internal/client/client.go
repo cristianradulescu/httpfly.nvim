@@ -4,10 +4,12 @@ package client
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -43,26 +45,34 @@ type Result struct {
 type Client struct {
 	HTTP *http.Client
 
-	mu           sync.Mutex
-	proxyClients map[string]*http.Client // keyed by httpfile.Request.Proxy
+	mu      sync.Mutex
+	clients map[transportKey]*http.Client
+}
+
+// transportKey identifies the non-default transport settings a request
+// needs; requests with the same key share one *http.Client.
+type transportKey struct {
+	proxy string
+	certs httpfile.Certificates
 }
 
 // New returns a Client with DefaultTimeout. Set HTTP.Timeout before the
-// first Send to use a different one; a proxy client created later copies
-// whatever HTTP.Timeout is at that point.
+// first Send to use a different one; a proxy/certificate client created
+// later copies whatever HTTP.Timeout is at that point.
 func New() *Client {
 	return &Client{
-		HTTP:         &http.Client{Timeout: DefaultTimeout},
-		proxyClients: make(map[string]*http.Client),
+		HTTP:    &http.Client{Timeout: DefaultTimeout},
+		clients: make(map[transportKey]*http.Client),
 	}
 }
 
 // Send performs req and returns its outcome. If req.Proxy is set, the
-// request is sent through that proxy instead of connecting directly.
+// request is sent through that proxy instead of connecting directly; if
+// req.Certs is set, its certificate files are loaded into the TLS setup.
 func (c *Client) Send(ctx context.Context, req httpfile.Request) Result {
 	start := time.Now()
 
-	httpClient, err := c.clientFor(req.Proxy)
+	httpClient, err := c.clientFor(transportKey{proxy: req.Proxy, certs: req.Certs})
 	if err != nil {
 		return Result{Request: req, Err: err}
 	}
@@ -110,29 +120,79 @@ func (c *Client) Send(ctx context.Context, req httpfile.Request) Result {
 }
 
 // clientFor returns the *http.Client to use for a request: the shared
-// direct-connection client when proxy is "", or a client routed through
-// that proxy otherwise. Proxy clients are cached so requests sharing a
-// proxy also share its connection pool.
-func (c *Client) clientFor(proxy string) (*http.Client, error) {
-	if proxy == "" {
+// default client when key is zero, or one with its own transport (routed
+// through key.proxy, presenting/trusting key.certs) otherwise. These are
+// cached so requests with the same settings share a connection pool.
+func (c *Client) clientFor(key transportKey) (*http.Client, error) {
+	if key == (transportKey{}) {
 		return c.HTTP, nil
 	}
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if hc, ok := c.proxyClients[proxy]; ok {
+	if hc, ok := c.clients[key]; ok {
 		return hc, nil
 	}
 
-	proxyURL, err := url.Parse(proxy)
-	if err != nil {
-		return nil, fmt.Errorf("invalid proxy URL: %w", err)
+	transport := &http.Transport{}
+	if !key.certs.IsZero() {
+		tlsConfig, err := loadTLSConfig(key.certs)
+		if err != nil {
+			return nil, err
+		}
+		// Same defaults (dial timeouts, HTTP/2, proxy from the environment)
+		// as the default client, which a custom TLS config would otherwise
+		// lose.
+		transport = http.DefaultTransport.(*http.Transport).Clone()
+		transport.TLSClientConfig = tlsConfig
 	}
-	hc := &http.Client{
-		Timeout:   c.HTTP.Timeout,
-		Transport: &http.Transport{Proxy: http.ProxyURL(proxyURL)},
+	if key.proxy != "" {
+		proxyURL, err := url.Parse(key.proxy)
+		if err != nil {
+			return nil, fmt.Errorf("invalid proxy URL: %w", err)
+		}
+		transport.Proxy = http.ProxyURL(proxyURL)
 	}
-	c.proxyClients[proxy] = hc
+
+	hc := &http.Client{Timeout: c.HTTP.Timeout, Transport: transport}
+	c.clients[key] = hc
 	return hc, nil
+}
+
+// loadTLSConfig builds a TLS config from certs' PEM files: CACertificate is
+// added to the system root CAs, and ClientCertificate (with its key from
+// ClientCertificateKey, or from the same file when that's unset) is
+// presented to servers that ask for one.
+func loadTLSConfig(certs httpfile.Certificates) (*tls.Config, error) {
+	cfg := &tls.Config{}
+
+	if certs.CACertificate != "" {
+		pemData, err := os.ReadFile(certs.CACertificate)
+		if err != nil {
+			return nil, fmt.Errorf("read CA certificate: %w", err)
+		}
+		pool, err := x509.SystemCertPool()
+		if err != nil {
+			pool = x509.NewCertPool()
+		}
+		if !pool.AppendCertsFromPEM(pemData) {
+			return nil, fmt.Errorf("CA certificate %q: no PEM certificates found", certs.CACertificate)
+		}
+		cfg.RootCAs = pool
+	}
+
+	if certs.ClientCertificate != "" {
+		keyFile := certs.ClientCertificateKey
+		if keyFile == "" {
+			keyFile = certs.ClientCertificate
+		}
+		cert, err := tls.LoadX509KeyPair(certs.ClientCertificate, keyFile)
+		if err != nil {
+			return nil, fmt.Errorf("load client certificate: %w", err)
+		}
+		cfg.Certificates = []tls.Certificate{cert}
+	}
+
+	return cfg, nil
 }

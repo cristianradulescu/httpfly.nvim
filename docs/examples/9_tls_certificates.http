@@ -1,0 +1,33 @@
+# TLS certificates per request -- the equivalents of curl's --cert, --key
+# and --cacert. See docs/http-file-format.md's "TLS certificates" section.
+#
+# For illustration only: the hosts and the certs/ files below don't exist,
+# so sending these fails ("could not read file ..."). Point them at your
+# own PEM files and server to try it. A relative path resolves against the
+# directory holding http-client.env.json (here, this one).
+
+###
+# @name MutualTLS
+# A client certificate and its private key in separate PEM files, for a
+# server that requires mutual TLS. The server's certificate is checked
+# against the system's root CAs as usual.
+# @clientCertificate certs/client.pem
+# @clientCertificateKey certs/client.key
+GET https://mtls.example.com/api/status HTTP/1.1
+
+###
+# @name PrivateCA
+# A server whose certificate is signed by a private CA: trust that CA on
+# top of the system's root CAs. No client certificate is presented.
+# @caCertificate certs/ca.pem
+GET https://internal.example.com/api/status HTTP/1.1
+
+###
+# @name MutualTLSPrivateCA
+# Both at once, with the client certificate and key bundled in one PEM
+# file (so no @clientCertificateKey), and the directory taken from a
+# variable -- it could just as well come from the environment file.
+@certDir = certs
+# @clientCertificate {{certDir}}/client-bundle.pem
+# @caCertificate {{certDir}}/ca.pem
+GET https://internal.example.com/api/status HTTP/1.1

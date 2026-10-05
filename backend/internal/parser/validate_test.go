@@ -1,9 +1,13 @@
 package parser
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/cristianradulescu/httpfly.nvim/backend/internal/httpfile"
 )
 
 func findIssue(issues []Issue, element string) *Issue {
@@ -434,6 +438,91 @@ func TestAnalyzeInvalidProxyErrors(t *testing.T) {
 	issue := findIssue(result.Blocks[0].Issues, "metadata:proxy")
 	if issue == nil || issue.Severity != SeverityError {
 		t.Fatalf("issue = %+v, want an error for a proxy URL missing scheme/host", issue)
+	}
+}
+
+func TestAnalyzeCertificateMetadata(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"client.pem", "client.key", "ca.pem"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	src := "@certs = " + dir + "\n\n" +
+		"###\n# @name Get\n" +
+		"# @clientCertificate {{certs}}/client.pem\n" +
+		"# @clientCertificateKey {{certs}}/client.key\n" +
+		"# @caCertificate {{certs}}/ca.pem\n" +
+		"GET https://localhost:8443/get HTTP/1.1\n"
+	result, err := Analyze(strings.NewReader(src))
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	if result.HasErrors() || len(result.Blocks[0].Issues) > 0 {
+		t.Fatalf("Issues = %+v, want none", result.Blocks[0].Issues)
+	}
+	want := httpfile.Certificates{
+		ClientCertificate:    filepath.Join(dir, "client.pem"),
+		ClientCertificateKey: filepath.Join(dir, "client.key"),
+		CACertificate:        filepath.Join(dir, "ca.pem"),
+	}
+	if got := result.Blocks[0].Request.Certs; got != want {
+		t.Errorf("Certs = %+v, want %+v", got, want)
+	}
+	if got := result.Blocks[0].Request.RawCerts.CACertificate; got != "{{certs}}/ca.pem" {
+		t.Errorf("RawCerts.CACertificate = %q, want the unresolved template", got)
+	}
+}
+
+func TestAnalyzeCertificateMetadataIssues(t *testing.T) {
+	tests := []struct {
+		name     string
+		src      string
+		global   bool
+		element  string
+		severity Severity
+	}{
+		{
+			name:     "missing file warns",
+			src:      "###\n# @name Get\n# @caCertificate does-not-exist.pem\nGET https://localhost/ HTTP/1.1\n",
+			element:  "metadata:caCertificate",
+			severity: SeverityWarning,
+		},
+		{
+			name:     "empty value",
+			src:      "###\n# @name Get\n# @clientCertificate\nGET https://localhost/ HTTP/1.1\n",
+			element:  "metadata:clientCertificate",
+			severity: SeverityError,
+		},
+		{
+			name:     "key without certificate",
+			src:      "###\n# @name Get\n# @clientCertificateKey client.key\nGET https://localhost/ HTTP/1.1\n",
+			element:  "metadata:clientCertificateKey",
+			severity: SeverityError,
+		},
+		{
+			name:     "not allowed in the prelude",
+			src:      "# @caCertificate ca.pem\n\n###\n# @name Get\nGET https://localhost/ HTTP/1.1\n",
+			global:   true,
+			element:  "metadata:caCertificate",
+			severity: SeverityError,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := Analyze(strings.NewReader(tt.src))
+			if err != nil {
+				t.Fatalf("Analyze: %v", err)
+			}
+			issues := result.Blocks[0].Issues
+			if tt.global {
+				issues = result.GlobalIssues
+			}
+			issue := findIssue(issues, tt.element)
+			if issue == nil || issue.Severity != tt.severity {
+				t.Fatalf("issues = %+v, want a %v on %s", issues, tt.severity, tt.element)
+			}
+		})
 	}
 }
 

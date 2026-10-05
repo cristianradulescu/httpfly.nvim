@@ -44,6 +44,30 @@ func TestToCurlWithBodyProxyAndMultipleHeadersPreservesOrder(t *testing.T) {
 	}
 }
 
+func TestToCurlWithCertificatesRoundTrips(t *testing.T) {
+	req := httpfile.Request{
+		Method: "GET",
+		URL:    "https://example.com",
+		Certs:  httpfile.Certificates{ClientCertificate: "certs/client.pem", ClientCertificateKey: "certs/client.key", CACertificate: "certs/ca.pem"},
+	}
+	got := ToCurl(req)
+	want := "curl 'https://example.com' \\\n" +
+		"  -X 'GET' \\\n" +
+		"  --cert 'certs/client.pem' \\\n" +
+		"  --key 'certs/client.key' \\\n" +
+		"  --cacert 'certs/ca.pem'\n"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+	back, _, err := Parse(got)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if back.Certs != req.Certs {
+		t.Errorf("round-tripped Certs = %+v, want %+v", back.Certs, req.Certs)
+	}
+}
+
 func TestToCurlNoHeadersOrBody(t *testing.T) {
 	req := httpfile.Request{Method: "GET", URL: "https://example.com"}
 	want := "curl 'https://example.com' \\\n  -X 'GET'\n"
