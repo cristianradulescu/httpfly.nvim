@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `@proxy` with an unsupported scheme (anything but `http`, `https`,
+  `socks5`, `socks5h`) is now a validation error, instead of failing at
+  send time with a cryptic error such as `unexpected EOF`.
+
 - The httpfly backend is now part of this repo (`backend/`) and is built
   when the plugin is installed: add `build = "make build"` to your
   lazy.nvim spec, or run `make build` in the plugin directory. Requires

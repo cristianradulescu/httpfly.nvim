@@ -441,6 +441,32 @@ func TestAnalyzeInvalidProxyErrors(t *testing.T) {
 	}
 }
 
+func TestAnalyzeProxyScheme(t *testing.T) {
+	cases := map[string]bool{
+		"http://localhost:3128":    true,
+		"https://localhost:3128":   true,
+		"socks5://localhost:1080":  true,
+		"SOCKS5H://localhost:1080": true,
+		"socks://localhost:1080":   false,
+		"socks4://localhost:1080":  false,
+		"ftp://localhost:21":       false,
+	}
+	for proxy, ok := range cases {
+		src := "###\n# @name Get\n# @proxy " + proxy + "\nGET http://localhost:8080/get HTTP/1.1\n"
+		result, err := Analyze(strings.NewReader(src))
+		if err != nil {
+			t.Fatalf("Analyze: %v", err)
+		}
+		issue := findIssue(result.Blocks[0].Issues, "metadata:proxy")
+		if ok && issue != nil {
+			t.Errorf("%s: unexpected issue %+v", proxy, issue)
+		}
+		if !ok && (issue == nil || issue.Severity != SeverityError) {
+			t.Errorf("%s: issue = %+v, want an unsupported-scheme error", proxy, issue)
+		}
+	}
+}
+
 func TestAnalyzeCertificateMetadata(t *testing.T) {
 	dir := t.TempDir()
 	for _, name := range []string{"client.pem", "client.key", "ca.pem"} {

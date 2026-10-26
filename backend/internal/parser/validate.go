@@ -786,6 +786,14 @@ func parseHeaderLine(line string) (httpfile.Header, []Issue) {
 	return httpfile.Header{Name: name, Value: strings.TrimSpace(rawValue)}, nil
 }
 
+// supportedProxySchemes are the proxy URL schemes net/http's Transport
+// understands. Any other scheme would be silently treated as an HTTP proxy,
+// failing at send time with a cryptic error (e.g. "unexpected EOF" for a
+// SOCKS proxy written as "socks://").
+var supportedProxySchemes = map[string]bool{
+	"http": true, "https": true, "socks5": true, "socks5h": true,
+}
+
 // resolveProxy interpolates and validates an effective "@proxy" value. An
 // empty rawProxy (no proxy declared, locally or globally) is not an issue --
 // it just means the request connects directly.
@@ -812,6 +820,12 @@ func resolveProxy(rawProxy string, vars map[string]string) (string, []Issue) {
 			Element:  "metadata:proxy",
 			Severity: SeverityError,
 			Message:  "proxy URL must be absolute (missing scheme or host)",
+		})
+	} else if u.Scheme != "" && !supportedProxySchemes[strings.ToLower(u.Scheme)] {
+		issues = append(issues, Issue{
+			Element:  "metadata:proxy",
+			Severity: SeverityError,
+			Message:  fmt.Sprintf("unsupported proxy scheme %q (use http, https, socks5 or socks5h)", u.Scheme),
 		})
 	}
 

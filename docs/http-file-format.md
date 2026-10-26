@@ -85,7 +85,7 @@ always sent exactly as written.
 |---|---|---|---|
 | `name` | **Yes** | request only | The request's identifier. `:HttpSend` uses it to send the request under the cursor. Every request must have a non-empty `@name`, supplied either as `# @name Value` or as trailing text on the block's `###` separator line (see [above](#requests)); it's an error at file-prelude scope (there's no such thing as a "global name"). |
 | `lang` | No | request only | Names the scripting language for pre-/post-request scripts. `lua` is the only supported value (and the default if omitted); anything else is a warning and falls back to Lua. |
-| `proxy` | No | request or global | An absolute proxy URL (`scheme://host[:port]`) to send this request through. See [below](#proxy). |
+| `proxy` | No | request or global | An absolute proxy URL (`scheme://host[:port]`, scheme `http`, `https`, `socks5` or `socks5h`) to send this request through. See [below](#proxy). |
 | `clientCertificate` | No | request only | A PEM client certificate to present to the server (mutual TLS). See [below](#tls-certificates). |
 | `clientCertificateKey` | No | request only | The PEM private key for `clientCertificate`, if it's in a separate file. |
 | `caCertificate` | No | request only | A PEM CA certificate to trust, in addition to the system's, when verifying the server. |
@@ -113,7 +113,10 @@ Declared in the [prelude](#prelude-global-vs-local), `@proxy` becomes the
 default for every request in the file. Declared inside a block, it
 overrides that default for just that one request. The value must resolve
 (after variable interpolation) to an absolute URL — `localhost:3128` is
-rejected as ambiguous; write `http://localhost:3128`.
+rejected as ambiguous; write `http://localhost:3128`. Supported schemes
+are `http`, `https`, `socks5` and `socks5h` (SOCKS5 with DNS resolved by
+the proxy); anything else (e.g. `socks://`, `socks4://`) is a validation
+error.
 
 There's currently no way to opt a single request *out* of a global proxy
 back to a direct connection — `# @proxy` with no value is a validation
@@ -348,7 +351,7 @@ file, run `bin/httpfly validate file.http` (see [Backend](backend.md#validate)).
 
 | Severity | Examples |
 |---|---|
-| `ERROR` (blocks the request / fails validation) | Missing or empty `@name`; the same `@name` used by more than one request in the file; a separator-line name that conflicts with an explicit `# @name` in the same block; request line that isn't `METHOD URL [PROTO]`; relative URL; malformed header line (no `:`); `@proxy` that isn't absolute; `@name`/`@lang`/certificate metadata declared in the prelude; `@clientCertificateKey` without `@clientCertificate`; `# @key` metadata placed among the headers instead of before the request line; a malformed or unterminated script block; a script with invalid Lua syntax; a variable reference cycle (`@a = {{b}}`, `@b = {{a}}`). |
+| `ERROR` (blocks the request / fails validation) | Missing or empty `@name`; the same `@name` used by more than one request in the file; a separator-line name that conflicts with an explicit `# @name` in the same block; request line that isn't `METHOD URL [PROTO]`; relative URL; malformed header line (no `:`); `@proxy` that isn't absolute or has an unsupported scheme; `@name`/`@lang`/certificate metadata declared in the prelude; `@clientCertificateKey` without `@clientCertificate`; `# @key` metadata placed among the headers instead of before the request line; a malformed or unterminated script block; a script with invalid Lua syntax; a variable reference cycle (`@a = {{b}}`, `@b = {{a}}`). |
 | `WARN` (still usable, just worth knowing) | Unknown `@key`; non-standard HTTP method; unrecognized `PROTO` string; `@lang` set to something other than `lua`; undefined `{{variable}}`; a `< path/to/file` body reference or certificate file that couldn't be read. |
 
 [`examples/invalid.http`](examples/invalid.http) demonstrates each of
