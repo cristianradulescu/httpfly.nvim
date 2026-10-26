@@ -19,6 +19,7 @@ type jsonResult struct {
 	Error       string        `json:"error,omitempty"`
 	ScriptError string        `json:"script_error,omitempty"`
 	DurationMs  int64         `json:"duration_ms"`
+	Trace       []string      `json:"trace,omitempty"`
 }
 
 type jsonRequest struct {
@@ -62,6 +63,9 @@ func toJSONResult(o requestOutcome, verbose bool) jsonResult {
 			Body:    r.Request.Body,
 		},
 		DurationMs: r.Duration.Milliseconds(),
+	}
+	if verbose {
+		out.Trace = r.Trace
 	}
 
 	if r.Err != nil {

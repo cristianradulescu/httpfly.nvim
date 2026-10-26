@@ -11,11 +11,12 @@ backend's command line, for working on either side.
 Every send is one or more `httpfly run -json` invocations:
 
 ```
-bin/httpfly run -json [-env E] [-timeout D] [-download F] [-name X] <file.http>
+bin/httpfly run -json [-env E] [-timeout D] [-v] [-download F] [-name X] <file.http>
 ```
 
-- `-env` is the environment picked with `:HttpEnv`, and `-timeout` is the
-  `timeout` option.
+- `-env` is the environment picked with `:HttpEnv`, `-timeout` is the
+  `timeout` option, and `-v` is passed when the `verbose` option is set
+  (the trace is shown as a "Trace" section under each request).
 - `:HttpSend` passes `-name` with the name of the request under the
   cursor. `:HttpSendAll` sends the whole file in one invocation, unless
   some request has `# @download`. Then each request is sent separately in
@@ -233,7 +234,7 @@ exits non-zero, since a command is required).
 | `-env E` | `run`, `validate`, `convert to-curl` | Apply variables from the environment named `E` in `http-client.env.json` (plus an optional `http-client.private.env.json` overlay), found in the current working directory (not `<file.http>`'s own directory). See [Environments](environments.md). |
 | `-s`, `-silent` | `run` | Print only response bodies, back to back, nothing else — like `curl -s`. A failed request prints nothing for itself but still counts toward the exit code. Mutually exclusive with `-json`. |
 | `-json` | `run` | Print a JSON array instead of plain text. See below. Mutually exclusive with `-s`/`-silent`. |
-| `-v`, `-verbose` | `run` | Also report TLS connection details (version, cipher suite, ALPN protocol, peer certificate). No effect on a plain HTTP (non-TLS) request. |
+| `-v`, `-verbose` | `run` | Also report a timestamped connection trace for each request — every redirect hop, the proxy used (`@proxy` or from `HTTP_PROXY`/`HTTPS_PROXY`), DNS resolution, connecting, the TLS handshake, the request being written, the response arriving, and the error if any — plus TLS connection details (version, cipher suite, ALPN protocol, peer certificate; none for plain HTTP). See [Diagnosing failures](#diagnosing-failures). |
 | `-download F` | `run` | Save the response body to file `F` instead of printing it — see [below](#-download). Mutually exclusive with `-s`/`-silent`; compatible with `-json`. |
 | `-timeout D` | `run` | Per-request timeout, as a Go duration such as `30s` or `2m`, covering the connection, the request, and reading the whole response body (so a large `-download` over a slow link may need a longer one). `0` disables it. Default `30s`. A request that hits it fails with a transport error like any other, counting toward the exit code. |
 | `-file F` | `convert from-curl` | Read the curl command from file `F` instead of stdin. |
@@ -265,7 +266,8 @@ Each request becomes one object in a JSON array:
     },
     "final_url": "... (only present if the request was redirected)",
     "script_error": "... (only present if a post-request script errored)",
-    "duration_ms": 12
+    "duration_ms": 12,
+    "trace": ["   0.1ms  GET https://example.com/get?greeting=hi", "... (only present with -v)"]
   }
 ]
 ```
@@ -280,7 +282,7 @@ If a request fails to send, its object has an `"error"` string instead of
 {
   "name": "Unreachable",
   "request": { "...": "..." },
-  "error": "Get \"http://127.0.0.1:1/get\": dial tcp 127.0.0.1:1: connect: connection refused",
+  "error": "Get \"http://127.0.0.1:1/get\": dial tcp 127.0.0.1:1: connect: connection refused (while connecting to 127.0.0.1:1)",
   "duration_ms": 0
 }
 ```
@@ -324,6 +326,37 @@ would otherwise dump as raw bytes to your terminal.
   `response.download_path` is set to the saved path instead — see the
   `-json` schema above. **Not compatible with `-s`/`-silent`** — both claim
   the body for a different purpose (print it vs. save it).
+
+## Diagnosing failures
+
+A request that fails to send has its error annotated with the phase it
+failed in and the proxy it went through, if any — e.g.
+`Post "http://example.com/post": EOF (while waiting for the response, via
+proxy http://localhost:3128)`. The phases are: resolving the host,
+connecting, the TLS handshake, sending the request, waiting for the
+response, reading the response headers, and reading the response body.
+
+For the full picture, add `-v` (plugin: `verbose = true`). Each request
+then gets a timestamped trace:
+
+```
+trace:
+     0.1ms  POST http://example.com/post
+     0.1ms  via proxy http://localhost:3128
+     0.1ms  getting a connection for localhost:3128
+     0.2ms  resolving localhost
+     0.5ms  resolved to 127.0.0.1
+     0.5ms  connecting to 127.0.0.1:3128 (tcp)
+     0.9ms  connected to 127.0.0.1:3128
+     1.0ms  got connection to 127.0.0.1:3128
+     1.2ms  request sent, waiting for the response
+     1.8ms  error: Post "http://example.com/post": EOF
+```
+
+Here the proxy accepted the connection and the request, then hung up
+without answering — typically a proxy that doesn't speak the protocol it
+was addressed with. A redirect shows as one more request line after the
+first response.
 
 ## Exit codes
 

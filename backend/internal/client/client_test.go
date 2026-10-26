@@ -11,6 +11,7 @@ import (
 	"encoding/pem"
 	"io"
 	"math/big"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -358,5 +359,75 @@ func TestSendInvalidCertificateFiles(t *testing.T) {
 				t.Errorf("Err = %v, want it to contain %q", result.Err, tt.want)
 			}
 		})
+	}
+}
+
+func TestSendErrorNamesPhaseAndProxy(t *testing.T) {
+	// A "proxy" that reads the request and hangs up without answering --
+	// what a SOCKS proxy does when spoken to in HTTP.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			conn.Read(make([]byte, 4096))
+			conn.Close()
+		}
+	}()
+
+	proxy := "http://" + ln.Addr().String()
+	req := httpfile.Request{Method: "GET", URL: "http://example.invalid/get", Proxy: proxy}
+	result := New().Send(context.Background(), req)
+	if result.Err == nil {
+		t.Fatal("expected an error from a proxy that hangs up")
+	}
+	msg := result.Err.Error()
+	for _, want := range []string{"while waiting for the response", "via proxy " + proxy} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("error = %q, want it to contain %q", msg, want)
+		}
+	}
+
+	trace := strings.Join(result.Trace, "\n")
+	for _, want := range []string{"GET http://example.invalid/get", "via proxy " + proxy, "connected to " + ln.Addr().String(), "request sent", "error: "} {
+		if !strings.Contains(trace, want) {
+			t.Errorf("trace missing %q:\n%s", want, trace)
+		}
+	}
+}
+
+func TestSendConnectionErrorNamesPhase(t *testing.T) {
+	req := httpfile.Request{Method: "GET", URL: "http://127.0.0.1:1"}
+	result := New().Send(context.Background(), req)
+	if result.Err == nil || !strings.Contains(result.Err.Error(), "while connecting to 127.0.0.1:1") {
+		t.Fatalf("Err = %v, want it to name the connecting phase", result.Err)
+	}
+}
+
+func TestSendTraceFollowsRedirects(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/start" {
+			http.Redirect(w, r, "/end", http.StatusFound)
+			return
+		}
+		w.Write([]byte("ok"))
+	}))
+	defer srv.Close()
+
+	result := New().Send(context.Background(), httpfile.Request{Method: "GET", URL: srv.URL + "/start"})
+	if result.Err != nil {
+		t.Fatalf("Send: %v", result.Err)
+	}
+	trace := strings.Join(result.Trace, "\n")
+	for _, want := range []string{"GET " + srv.URL + "/start", "302 Found", "GET " + srv.URL + "/end", "200 OK", "response body read (2 bytes)"} {
+		if !strings.Contains(trace, want) {
+			t.Errorf("trace missing %q:\n%s", want, trace)
+		}
 	}
 }

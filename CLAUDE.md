@@ -159,7 +159,9 @@ Request flow, end to end:
    - **Per-request JSON shape** (see `docs/backend.md#-json`): each array
      element is `{name, request:{method,url,proto,headers,body},
      response:{status_code,headers,body,download_path?,tls?}, final_url?,
-     script_error?, error?, duration_ms}`. A request that failed to send
+     script_error?, error?, duration_ms, trace?}` (`trace`, a list of
+     strings, only with `-v`, i.e. the `verbose` option; rendered as a
+     "▸ Trace" section). A request that failed to send
      has `error` instead of `response`, rendered as an "▸ Error" section.
      `script_error` (a failed post-request script) coexists with
      `response` and is rendered as a flagged line after the body. With

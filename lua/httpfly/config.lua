@@ -7,6 +7,7 @@ M.defaults = {
   max_header_value_len = 100,
   preview_keymap = "K",
   timeout = nil, -- per-request timeout passed as httpfly's "-timeout", e.g. "2m"; nil = httpfly's default (30s)
+  verbose = false, -- pass httpfly's "-v": show a connection trace (DNS, connect, proxy, TLS, redirects) per request
 }
 
 M.options = vim.deepcopy(M.defaults)

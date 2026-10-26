@@ -37,7 +37,7 @@ func runCommand(args []string, stdout, stderr io.Writer) error {
 	fs.BoolVar(&silent, "s", false, "shorthand for -silent")
 	jsonOutput := fs.Bool("json", false, "print results as a JSON array instead of plain text")
 	var verbose bool
-	fs.BoolVar(&verbose, "verbose", false, "also print TLS connection details (version, cipher, peer certificate)")
+	fs.BoolVar(&verbose, "verbose", false, "also print a connection trace (DNS, connect, proxy, TLS handshake, redirects) and TLS details (version, cipher, peer certificate)")
 	fs.BoolVar(&verbose, "v", false, "shorthand for -verbose")
 	envName := fs.String("env", "", "apply variables from the named environment in http-client.env.json")
 	download := fs.String("download", "", "save the response body to this file instead of printing it (only one request may be selected; the file's parent directory must already exist)")
@@ -219,6 +219,14 @@ func printResult(w io.Writer, r client.Result, verbose bool, downloadPath string
 		fmt.Fprintf(w, "\n%s\n", r.Request.Body)
 	}
 	fmt.Fprintln(w)
+
+	if verbose && len(r.Trace) > 0 {
+		fmt.Fprintln(w, "trace:")
+		for _, line := range r.Trace {
+			fmt.Fprintf(w, "  %s\n", line)
+		}
+		fmt.Fprintln(w)
+	}
 
 	if r.Err != nil {
 		fmt.Fprintf(w, "error: %v\n\n", r.Err)

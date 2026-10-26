@@ -270,6 +270,17 @@ function M.render(decoded, cmd_str)
         table.insert(out, "")
       end
     end
+
+    if type(req.trace) == "table" and #req.trace > 0 then
+      table.insert(out, "▸ Trace")
+      hl_line(highlights, out, "Title")
+      table.insert(out, "")
+      for _, line in ipairs(req.trace) do
+        table.insert(out, "  " .. tostring(line))
+        hl_line(highlights, out, "Comment")
+      end
+      table.insert(out, "")
+    end
   end
 
   return out, truncations, highlights

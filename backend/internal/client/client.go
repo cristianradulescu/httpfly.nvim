@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptrace"
 	"net/url"
 	"os"
 	"strings"
@@ -39,6 +40,10 @@ type Result struct {
 	FinalURL string
 	// TLS is the connection's TLS state, or nil for a plain HTTP request.
 	TLS *tls.ConnectionState
+	// Trace is a timestamped log of what happened while sending: DNS,
+	// connecting, proxy, TLS handshake, each redirect hop, and the error
+	// if any (see tracer).
+	Trace []string
 }
 
 // Client sends httpfile.Request values over HTTP.
@@ -82,6 +87,8 @@ func (c *Client) Send(ctx context.Context, req httpfile.Request) Result {
 		body = strings.NewReader(req.Body)
 	}
 
+	tr := newTracer()
+	ctx = httptrace.WithClientTrace(ctx, tr.clientTrace())
 	httpReq, err := http.NewRequestWithContext(ctx, req.Method, req.URL, body)
 	if err != nil {
 		return Result{Request: req, Err: err}
@@ -90,17 +97,29 @@ func (c *Client) Send(ctx context.Context, req httpfile.Request) Result {
 		httpReq.Header.Add(h.Name, h.Value)
 	}
 
-	resp, err := httpClient.Do(httpReq)
+	// A per-request copy, so the cached client's connection pool is shared
+	// but the tracing transport isn't.
+	traced := *httpClient
+	base := httpClient.Transport
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	traced.Transport = &tracingTransport{base: base, t: tr, envVar: req.Proxy == ""}
+
+	resp, err := traced.Do(httpReq)
 	if err != nil {
-		return Result{Request: req, Duration: time.Since(start), Err: err}
+		err = tr.fail(err)
+		return Result{Request: req, Duration: time.Since(start), Err: err, Trace: tr.trace()}
 	}
 	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(resp.Body)
 	duration := time.Since(start)
 	if err != nil {
-		return Result{Request: req, Duration: duration, Err: err}
+		err = tr.fail(err)
+		return Result{Request: req, Duration: duration, Err: err, Trace: tr.trace()}
 	}
+	tr.event("", "response body read (%d bytes)", len(respBody))
 
 	finalURL := req.URL
 	if resp.Request != nil && resp.Request.URL != nil {
@@ -116,6 +135,7 @@ func (c *Client) Send(ctx context.Context, req httpfile.Request) Result {
 		Duration:   duration,
 		FinalURL:   finalURL,
 		TLS:        resp.TLS,
+		Trace:      tr.trace(),
 	}
 }
 

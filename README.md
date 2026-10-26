@@ -53,6 +53,7 @@ require("httpfly").setup({
   max_header_value_len = 100,                        -- truncate longer header values in tables
   preview_keymap = "K",                              -- show a truncated value in full
   timeout = nil,                                     -- per-request timeout, e.g. "2m"; nil = 30s
+  verbose = false,                                   -- show a connection trace per request (DNS, proxy, TLS, redirects)
 })
 ```
 

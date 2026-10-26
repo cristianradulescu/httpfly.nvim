@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Clearer send errors: a request that fails to send now says which phase
+  it failed in and which proxy it went through, e.g. `EOF (while waiting
+  for the response, via proxy http://localhost:3128)`.
+- `-v` now also prints a timestamped connection trace per request
+  (redirect hops, proxy, DNS, connect, TLS handshake, request sent,
+  response, error). The new `verbose = true` plugin option passes `-v`
+  and shows the trace in the result pane.
+
 - Multiline URLs: indented lines starting with `/`, `?` or `&` right after
   the request line are appended to its URL, JetBrains HTTP Client style,
   so a long URL can be split one path segment or query parameter per line.

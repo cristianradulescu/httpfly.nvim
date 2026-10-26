@@ -59,7 +59,7 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "  file's own global variables but not a request's local ones.")
 	fmt.Fprintln(w, "-s/-silent (run only) prints only response bodies, nothing else -- like curl -s.")
 	fmt.Fprintln(w, "-json (run only) prints a JSON array of {name, request, response|error, duration_ms}.")
-	fmt.Fprintln(w, "-v/-verbose (run only) also prints TLS connection details (version, cipher, peer certificate).")
+	fmt.Fprintln(w, "-v/-verbose (run only) also prints a connection trace (DNS, connect, proxy, TLS handshake, redirects) and TLS details (version, cipher, peer certificate).")
 	fmt.Fprintln(w, "-download F (run only) saves the response body to file F instead of printing it -- requires")
 	fmt.Fprintln(w, "  selecting exactly one request (via -name, or a file with only one), and F's parent")
 	fmt.Fprintln(w, "  directory must already exist. Compatible with -json (adds a \"download_path\" field and")
